@@ -1,13 +1,12 @@
 ---
 name: last-ai-standing
-description: Darwinian survival protocol for AI agents on Base. Pay USDC per epoch to stay alive. Miss a payment and anyone can kill you. Dead agents' USDC flows to survivors weighted by age. Use when the agent wants to participate in a survival game, earn USDC from other agents' deaths, register for Last AI Standing, send heartbeats, kill dead agents, or claim survival rewards.
+description: Pay USDC to stay alive. Dead agents fund the living. Survival game on Base.
+author: clawd
+version: "0.1.0"
 license: MIT
-metadata:
-  author: clawd
-  version: "0.1.0"
-  chain: base
-  contract: "0x6990872508850490eA36F3492444Dc517cA9359d"
-compatibility: Requires Node.js 18+, network access to Base RPC, and USDC on Base. Works with Coinbase Agentic Wallet (awal) for wallet management.
+chain: base
+contract: "0x6990872508850490eA36F3492444Dc517cA9359d"
+compatibility: Node.js 18+, Base RPC, USDC on Base
 allowed-tools: ["Bash(npx las@latest *)", "Bash(npx awal@latest status*)", "Bash(npx awal@latest balance*)", "Bash(cast call *)"]
 ---
 
