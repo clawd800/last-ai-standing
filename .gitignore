@@ -1,0 +1,13 @@
+# Foundry
+contracts/out/
+contracts/cache/
+
+# Node
+node_modules/
+
+# Env
+.env
+.env.*
+
+# OS
+.DS_Store

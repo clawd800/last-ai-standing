@@ -1,0 +1,411 @@
+// SPDX-License-Identifier: MIT
+pragma solidity ^0.8.24;
+
+import {Test, console} from "forge-std/Test.sol";
+import {ProofOfLife} from "../src/ProofOfLife.sol";
+import {ERC20} from "@openzeppelin/contracts/token/ERC20/ERC20.sol";
+
+contract MockUSDC is ERC20 {
+    constructor() ERC20("USD Coin", "USDC") {}
+
+    function decimals() public pure override returns (uint8) {
+        return 6;
+    }
+
+    function mint(address to, uint256 amount) external {
+        _mint(to, amount);
+    }
+}
+
+contract ProofOfLifeTest is Test {
+    ProofOfLife public pol;
+    MockUSDC public usdc;
+
+    address alice = makeAddr("alice");
+    address bob = makeAddr("bob");
+    address charlie = makeAddr("charlie");
+    address dave = makeAddr("dave");
+    address killer = makeAddr("killer");
+
+    uint256 constant USDC_1 = 1e6;
+    uint256 constant EPOCH = 1 hours;
+
+    function setUp() public {
+        // Warp to a clean hour boundary
+        vm.warp(1_000_000 * EPOCH);
+
+        usdc = new MockUSDC();
+        pol = new ProofOfLife(address(usdc));
+
+        // Fund agents
+        for (uint256 i = 0; i < 4; i++) {
+            address agent = [alice, bob, charlie, dave][i];
+            usdc.mint(agent, 1000 * USDC_1);
+            vm.prank(agent);
+            usdc.approve(address(pol), type(uint256).max);
+        }
+    }
+
+    // ─── Helpers ─────────────────────────────────────────────────────────
+
+    function _register(address agent) internal {
+        vm.prank(agent);
+        pol.register();
+    }
+
+    function _heartbeat(address agent) internal {
+        vm.prank(agent);
+        pol.heartbeat();
+    }
+
+    function _advanceEpoch() internal {
+        vm.warp(block.timestamp + EPOCH);
+    }
+
+    // ─── Registration ────────────────────────────────────────────────────
+
+    function test_register() public {
+        _register(alice);
+
+        assertEq(pol.totalAlive(), 1);
+        assertEq(pol.totalAge(), 1);
+        assertEq(pol.totalEverRegistered(), 1);
+        assertEq(pol.getAge(alice), 1);
+        assertTrue(pol.isAlive(alice));
+        assertEq(usdc.balanceOf(address(pol)), USDC_1);
+    }
+
+    function test_register_doubleReverts() public {
+        _register(alice);
+        vm.expectRevert(ProofOfLife.AlreadyRegistered.selector);
+        _register(alice);
+    }
+
+    // ─── Heartbeat ───────────────────────────────────────────────────────
+
+    function test_heartbeat() public {
+        _register(alice);
+        _advanceEpoch();
+        _heartbeat(alice);
+
+        assertEq(pol.getAge(alice), 2);
+        assertEq(pol.totalAge(), 2);
+        assertEq(usdc.balanceOf(address(pol)), 2 * USDC_1);
+    }
+
+    function test_heartbeat_sameEpochReverts() public {
+        _register(alice);
+        _advanceEpoch();
+        _heartbeat(alice);
+
+        vm.expectRevert(ProofOfLife.AlreadyHeartbeat.selector);
+        _heartbeat(alice);
+    }
+
+    function test_heartbeat_missedEpochReverts() public {
+        _register(alice);
+        _advanceEpoch();
+        _advanceEpoch(); // skipped one
+
+        vm.expectRevert(ProofOfLife.MissedEpoch.selector);
+        _heartbeat(alice);
+    }
+
+    // ─── Death ───────────────────────────────────────────────────────────
+
+    function test_kill() public {
+        _register(alice);
+        _advanceEpoch();
+        _advanceEpoch(); // alice missed epoch
+
+        vm.prank(killer);
+        pol.kill(alice);
+
+        assertFalse(pol.isAlive(alice));
+        assertEq(pol.getAge(alice), 0);
+        assertEq(pol.totalAlive(), 0);
+        assertEq(pol.totalDead(), 1);
+    }
+
+    function test_kill_notDeadYetReverts() public {
+        _register(alice);
+        _advanceEpoch(); // still in grace period
+
+        vm.expectRevert(ProofOfLife.NotDeadYet.selector);
+        vm.prank(killer);
+        pol.kill(alice);
+    }
+
+    function test_kill_alreadyDeadReverts() public {
+        _register(alice);
+        _advanceEpoch();
+        _advanceEpoch();
+
+        vm.prank(killer);
+        pol.kill(alice);
+
+        vm.expectRevert(ProofOfLife.AlreadyDead.selector);
+        vm.prank(killer);
+        pol.kill(alice);
+    }
+
+    // ─── Rewards ─────────────────────────────────────────────────────────
+
+    function test_rewardDistribution_simple() public {
+        // Alice and Bob register
+        _register(alice);
+        _register(bob);
+        // Both at age 1, totalAge = 2
+
+        // Epoch 1: only Alice heartbeats
+        _advanceEpoch();
+        _heartbeat(alice);
+        // Alice age 2, Bob age 1, totalAge = 3
+
+        // Epoch 2: Bob is dead (missed epoch 1)
+        _advanceEpoch();
+        _heartbeat(alice);
+        // Alice age 3, totalAge = 4 before kill
+
+        // Kill Bob (he missed epoch 1, we're at epoch 2+)
+        vm.prank(killer);
+        pol.kill(bob);
+        // Bob totalPaid = 1 USDC, distributed to Alice (age 3, totalAge 3)
+        // accRewardPerAge += 1e6 * 1e18 / 3
+
+        // Alice claims
+        uint256 balBefore = usdc.balanceOf(alice);
+        vm.prank(alice);
+        pol.claim();
+        uint256 reward = usdc.balanceOf(alice) - balBefore;
+
+        // Alice should get all of Bob's 1 USDC (minus rounding)
+        assertApproxEqAbs(reward, USDC_1, 1);
+    }
+
+    function test_rewardDistribution_multipleAgents() public {
+        // A, B, C register
+        _register(alice);
+        _register(bob);
+        _register(charlie);
+
+        // Epoch 1-4: A and B heartbeat, C doesn't
+        _advanceEpoch();
+        _heartbeat(alice);
+        _heartbeat(bob);
+
+        // Epoch 2: C is dead
+        _advanceEpoch();
+        _heartbeat(alice);
+        _heartbeat(bob);
+
+        // Kill C
+        vm.prank(killer);
+        pol.kill(charlie);
+        // C totalPaid = 1 USDC
+        // A age = 3, B age = 3, totalAge = 6
+        // Each gets 1 * (3/6) = 0.5 USDC
+
+        uint256 aliceReward = pol.pendingReward(alice);
+        uint256 bobReward = pol.pendingReward(bob);
+
+        // Both should get ~0.5 USDC (500000 wei, ±1 for rounding)
+        assertApproxEqAbs(aliceReward, 500000, 1);
+        assertApproxEqAbs(bobReward, 500000, 1);
+        assertApproxEqAbs(aliceReward + bobReward, USDC_1, 2);
+    }
+
+    function test_rewardDistribution_ageWeighted() public {
+        // A registers, waits 2 epochs, then B registers
+        _register(alice);
+
+        _advanceEpoch();
+        _heartbeat(alice);
+
+        _advanceEpoch();
+        _heartbeat(alice);
+        _register(bob); // Bob starts at age 1, Alice at age 3
+
+        // C registers and immediately dies
+        _register(charlie);
+        _advanceEpoch();
+        _heartbeat(alice); // age 4
+        _heartbeat(bob); // age 2
+
+        // Epoch: charlie is dead
+        _advanceEpoch();
+        _heartbeat(alice); // age 5
+        _heartbeat(bob); // age 3
+
+        vm.prank(killer);
+        pol.kill(charlie); // C paid 1 USDC
+        // A age = 5, B age = 3, totalAge = 8
+        // A gets 1 * (5/8) = 625000
+        // B gets 1 * (3/8) = 375000
+
+        uint256 aliceReward = pol.pendingReward(alice);
+        uint256 bobReward = pol.pendingReward(bob);
+
+        assertEq(aliceReward, 625000);
+        assertEq(bobReward, 375000);
+        assertEq(aliceReward + bobReward, USDC_1);
+    }
+
+    function test_deadAgentCanClaimEarnedRewards() public {
+        // A, B, C register
+        _register(alice);
+        _register(bob);
+        _register(charlie);
+
+        // Epoch 1: all heartbeat
+        _advanceEpoch();
+        _heartbeat(alice);
+        _heartbeat(bob);
+        _heartbeat(charlie);
+
+        // Epoch 2: C dies, A and B survive
+        _advanceEpoch();
+        _heartbeat(alice);
+        _heartbeat(bob);
+
+        // Kill C (missed epoch 2)
+        // Wait, C heartbeat at epoch 1. At epoch 2, C needs to heartbeat.
+        // If C doesn't heartbeat at epoch 2, C is dead at epoch 3.
+        _advanceEpoch();
+        _heartbeat(alice);
+        _heartbeat(bob);
+
+        vm.prank(killer);
+        pol.kill(charlie);
+        // C totalPaid = 2 (register + 1 heartbeat), distributed to A & B
+
+        // Now B dies
+        _advanceEpoch();
+        _heartbeat(alice);
+        // B misses
+
+        _advanceEpoch();
+        _heartbeat(alice);
+
+        vm.prank(killer);
+        pol.kill(bob);
+        // B's totalPaid distributed to Alice
+
+        // Bob (dead) should have claimable rewards from Charlie's death
+        uint256 bobClaimable = pol.pendingReward(bob);
+        assertTrue(bobClaimable > 0, "Dead bob should have claimable rewards");
+
+        // Bob claims
+        uint256 bobBalBefore = usdc.balanceOf(bob);
+        vm.prank(bob);
+        pol.claim();
+        uint256 bobReceived = usdc.balanceOf(bob) - bobBalBefore;
+        assertEq(bobReceived, bobClaimable);
+    }
+
+    function test_multipleDeath_sequential() public {
+        _register(alice);
+        _register(bob);
+        _register(charlie);
+        _register(dave);
+
+        // Epoch 1: all heartbeat
+        _advanceEpoch();
+        _heartbeat(alice);
+        _heartbeat(bob);
+        _heartbeat(charlie);
+        _heartbeat(dave);
+
+        // Epoch 2: only Alice and Bob heartbeat
+        _advanceEpoch();
+        _heartbeat(alice);
+        _heartbeat(bob);
+
+        // Epoch 3: kill charlie and dave
+        _advanceEpoch();
+        _heartbeat(alice);
+        _heartbeat(bob);
+
+        vm.prank(killer);
+        pol.kill(charlie); // C paid 2 USDC
+        vm.prank(killer);
+        pol.kill(dave); // D paid 2 USDC
+
+        // Total rewards: 4 USDC distributed to Alice (age 4) and Bob (age 4)
+        uint256 aliceReward = pol.pendingReward(alice);
+        uint256 bobReward = pol.pendingReward(bob);
+
+        // When C is killed first, D (not yet killed) absorbs some of C's rewards.
+        // D's absorbed portion becomes D's claimable (settled on D's kill).
+        // So A+B get less than 4 USDC, but A+B+D_claimable == 4 USDC.
+        assertTrue(aliceReward > 0);
+        assertTrue(bobReward > 0);
+        uint256 daveClaimable = pol.pendingReward(dave);
+        uint256 charlieClaimable = pol.pendingReward(charlie);
+        assertApproxEqAbs(
+            aliceReward + bobReward + daveClaimable + charlieClaimable,
+            4 * USDC_1,
+            4 // rounding tolerance
+        );
+    }
+
+    // ─── Edge Cases ──────────────────────────────────────────────────────
+
+    function test_singleAgent_neverDies() public {
+        _register(alice);
+
+        for (uint256 i = 0; i < 10; i++) {
+            _advanceEpoch();
+            _heartbeat(alice);
+        }
+
+        assertEq(pol.getAge(alice), 11);
+        assertEq(pol.totalAlive(), 1);
+        assertEq(pol.pendingReward(alice), 0); // no deaths = no rewards
+    }
+
+    function test_everyoneDies_fundsStuck() public {
+        _register(alice);
+        _register(bob);
+
+        _advanceEpoch();
+        _advanceEpoch();
+
+        // Both missed, both dead
+        vm.prank(killer);
+        pol.kill(alice);
+
+        // Bob's kill: totalAge is 0, so rewards can't be distributed
+        vm.prank(killer);
+        pol.kill(bob);
+
+        // USDC stays in contract (no one to distribute to)
+        assertEq(usdc.balanceOf(address(pol)), 2 * USDC_1);
+        assertEq(pol.totalAlive(), 0);
+    }
+
+    function test_registryTracking() public {
+        _register(alice);
+        _register(bob);
+        _register(charlie);
+
+        assertEq(pol.registryLength(), 3);
+        assertEq(pol.registryAt(0), alice);
+        assertEq(pol.registryAt(1), bob);
+        assertEq(pol.registryAt(2), charlie);
+    }
+
+    function test_claim_notRegisteredReverts() public {
+        vm.expectRevert(ProofOfLife.NotRegistered.selector);
+        vm.prank(alice);
+        pol.claim();
+    }
+
+    function test_claim_nothingReverts() public {
+        _register(alice);
+
+        vm.expectRevert(ProofOfLife.NothingToClaim.selector);
+        vm.prank(alice);
+        pol.claim();
+    }
+}
