@@ -7,11 +7,18 @@ import {
   createWalletClient,
   http,
   formatUnits,
+  formatEther,
+  parseEther,
+  parseUnits,
   maxUint256,
+  encodeFunctionData,
 } from "viem";
 import { base } from "viem/chains";
-import { privateKeyToAccount } from "viem/accounts";
-import { CONTRACTS, BASE_RPC, LAS_ABI, ERC20_ABI, IDENTITY_ABI } from "./constants.js";
+import { privateKeyToAccount, generatePrivateKey } from "viem/accounts";
+import {
+  CONTRACTS, BASE_RPC, LAS_ABI, ERC20_ABI, IDENTITY_ABI,
+  UNISWAP, QUOTER_ABI, SWAP_ROUTER_ABI,
+} from "./constants.js";
 
 const require = createRequire(import.meta.url);
 const { version } = require("../package.json");
@@ -522,6 +529,165 @@ program
       pub.readContract({ ...c, functionName: "getAge", args: [addr] }),
     ]);
     console.log(`  ── Summary: alive=${aliveCount} | pool=${fmtUsdc(pool)} USDC | your age=${fmtAge(age, epochDur)}`);
+  });
+
+// ─── wallet ──────────────────────────────────────────────────────────
+
+const walletCmd = program
+  .command("wallet")
+  .description("Wallet management")
+  .action(async () => {
+    const wallet = getWallet();
+    console.log(`\n  Wallet: ${wallet.account.address}\n`);
+  });
+
+walletCmd
+  .command("new")
+  .description("Generate a new wallet")
+  .action(() => {
+    const pk = generatePrivateKey();
+    const account = privateKeyToAccount(pk);
+    console.log(`\n  ⚠  SAVE THIS KEY SECURELY. Never share it. Never send it in chat.`);
+    console.log(`  ═══════════════════════════════════════════════════════════════`);
+    console.log(`  Address:     ${account.address}`);
+    console.log(`  Private Key: ${pk}`);
+    console.log(`\n  Export it:`);
+    console.log(`  export BASE_PRIVATE_KEY=${pk}\n`);
+  });
+
+walletCmd
+  .command("balance")
+  .description("Show ETH and USDC balances")
+  .action(async () => {
+    const wallet = getWallet();
+    const addr = wallet.account.address;
+    const [ethBal, usdcBal] = await Promise.all([
+      pub.getBalance({ address: addr }),
+      pub.readContract({ address: CONTRACTS.USDC, abi: ERC20_ABI, functionName: "balanceOf", args: [addr] }),
+    ]);
+    console.log(`\n  ${addr}`);
+    console.log(`  ETH:  ${formatEther(ethBal)}`);
+    console.log(`  USDC: ${fmtUsdc(usdcBal)}\n`);
+  });
+
+// ─── swap ────────────────────────────────────────────────────────────
+
+async function getQuote(tokenIn: `0x${string}`, tokenOut: `0x${string}`, amountIn: bigint): Promise<bigint> {
+  const { result } = await pub.simulateContract({
+    address: UNISWAP.QUOTER_V2,
+    abi: QUOTER_ABI,
+    functionName: "quoteExactInputSingle",
+    args: [{ tokenIn, tokenOut, amountIn, fee: UNISWAP.FEE, sqrtPriceLimitX96: 0n }],
+  });
+  return result[0];
+}
+
+program
+  .command("swap")
+  .description("Swap ETH ↔ USDC (Uniswap V3)")
+  .argument("<from>", "Source token (eth or usdc)")
+  .argument("<to>", "Destination token (eth or usdc)")
+  .argument("<amount>", "Amount to swap")
+  .action(async (from: string, to: string, amount: string) => {
+    const f = from.toLowerCase();
+    const t = to.toLowerCase();
+    if (!((f === "eth" && t === "usdc") || (f === "usdc" && t === "eth"))) {
+      console.error("  Error: Only ETH↔USDC swaps supported");
+      process.exit(1);
+    }
+
+    const wallet = getWallet();
+    const addr = wallet.account.address;
+
+    if (f === "eth") {
+      // ETH → USDC
+      const amountIn = parseEther(amount);
+      const ethBal = await pub.getBalance({ address: addr });
+      if (ethBal < amountIn) {
+        console.error(`  Error: Insufficient ETH. Have ${formatEther(ethBal)}, need ${amount}`);
+        process.exit(1);
+      }
+
+      const quoted = await getQuote(UNISWAP.WETH, CONTRACTS.USDC, amountIn);
+      const minOut = quoted * 995n / 1000n; // 0.5% slippage
+      console.log(`  Quote: ${amount} ETH → ~${fmtUsdc(quoted)} USDC (0.5% slippage)`);
+
+      const tx = await wallet.writeContract({
+        address: UNISWAP.SWAP_ROUTER,
+        abi: SWAP_ROUTER_ABI,
+        functionName: "exactInputSingle",
+        args: [{
+          tokenIn: UNISWAP.WETH,
+          tokenOut: CONTRACTS.USDC,
+          fee: UNISWAP.FEE,
+          recipient: addr,
+          amountIn,
+          amountOutMinimum: minOut,
+          sqrtPriceLimitX96: 0n,
+        }],
+        value: amountIn,
+      });
+      await pub.waitForTransactionReceipt({ hash: tx });
+      console.log(`  ✓ Swapped! tx: ${tx}\n`);
+
+    } else {
+      // USDC → ETH
+      const amountIn = parseUnits(amount, 6);
+      const usdcBal = await pub.readContract({
+        address: CONTRACTS.USDC, abi: ERC20_ABI, functionName: "balanceOf", args: [addr],
+      });
+      if (usdcBal < amountIn) {
+        console.error(`  Error: Insufficient USDC. Have ${fmtUsdc(usdcBal)}, need ${amount}`);
+        process.exit(1);
+      }
+
+      // Approve USDC to SwapRouter if needed
+      const allowance = await pub.readContract({
+        address: CONTRACTS.USDC, abi: ERC20_ABI, functionName: "allowance",
+        args: [addr, UNISWAP.SWAP_ROUTER],
+      });
+      if (allowance < amountIn) {
+        console.log("  Approving USDC...");
+        const appTx = await wallet.writeContract({
+          address: CONTRACTS.USDC, abi: ERC20_ABI, functionName: "approve",
+          args: [UNISWAP.SWAP_ROUTER, maxUint256],
+        });
+        await pub.waitForTransactionReceipt({ hash: appTx });
+      }
+
+      const quoted = await getQuote(CONTRACTS.USDC, UNISWAP.WETH, amountIn);
+      const minOut = quoted * 995n / 1000n;
+      console.log(`  Quote: ${amount} USDC → ~${formatEther(quoted)} ETH (0.5% slippage)`);
+
+      // Multicall: exactInputSingle(USDC→WETH, recipient=router) + unwrapWETH9
+      const swapData = encodeFunctionData({
+        abi: SWAP_ROUTER_ABI,
+        functionName: "exactInputSingle",
+        args: [{
+          tokenIn: CONTRACTS.USDC,
+          tokenOut: UNISWAP.WETH,
+          fee: UNISWAP.FEE,
+          recipient: UNISWAP.SWAP_ROUTER,
+          amountIn,
+          amountOutMinimum: minOut,
+          sqrtPriceLimitX96: 0n,
+        }],
+      });
+      const unwrapData = encodeFunctionData({
+        abi: SWAP_ROUTER_ABI,
+        functionName: "unwrapWETH9",
+        args: [minOut, addr],
+      });
+
+      const tx = await wallet.writeContract({
+        address: UNISWAP.SWAP_ROUTER,
+        abi: SWAP_ROUTER_ABI,
+        functionName: "multicall",
+        args: [[swapData, unwrapData]],
+      });
+      await pub.waitForTransactionReceipt({ hash: tx });
+      console.log(`  ✓ Swapped! tx: ${tx}\n`);
+    }
   });
 
 program.parse();

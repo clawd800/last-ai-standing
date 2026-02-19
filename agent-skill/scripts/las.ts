@@ -20,11 +20,15 @@ import {
   createWalletClient,
   http,
   formatUnits,
+  formatEther,
+  parseEther,
+  parseUnits,
   maxUint256,
+  encodeFunctionData,
   type Address,
 } from "viem";
 import { base } from "viem/chains";
-import { privateKeyToAccount } from "viem/accounts";
+import { privateKeyToAccount, generatePrivateKey } from "viem/accounts";
 
 // ─── Config ──────────────────────────────────────────────────────────
 
@@ -32,6 +36,10 @@ const RPC = "https://base-rpc.publicnode.com";
 const LAS = "0x5e9e09b03d08017fddbc1652e9394e7cb4a24074" as const;
 const USDC = "0x833589fCD6eDb6E08f4c7C32D4f71b54bdA02913" as const;
 const IDENTITY = "0x8004A169FB4a3325136EB29fA0ceB6D2e539a432" as const;
+const SWAP_ROUTER = "0x2626664c2603336E57B271c5C0b26F421741e481" as const;
+const QUOTER_V2 = "0x3d4e44Eb1374240CE5F1B871ab261CD16335B76a" as const;
+const WETH = "0x4200000000000000000000000000000000000006" as const;
+const SWAP_FEE = 500; // 0.05% tier
 
 // ─── ABIs ────────────────────────────────────────────────────────────
 
@@ -84,6 +92,37 @@ const IDENTITY_ABI = [
   { type: "function", name: "register", inputs: [{ name: "metadataURI", type: "string" }], outputs: [{ type: "uint256" }], stateMutability: "nonpayable" },
   { type: "function", name: "getAgentId", inputs: [{ name: "wallet", type: "address" }], outputs: [{ type: "uint256" }], stateMutability: "view" },
   { type: "function", name: "tokenURI", inputs: [{ name: "agentId", type: "uint256" }], outputs: [{ type: "string" }], stateMutability: "view" },
+] as const;
+
+const QUOTER_ABI = [{
+  type: "function", name: "quoteExactInputSingle", stateMutability: "nonpayable",
+  inputs: [{ name: "params", type: "tuple", components: [
+    { name: "tokenIn", type: "address" }, { name: "tokenOut", type: "address" },
+    { name: "amountIn", type: "uint256" }, { name: "fee", type: "uint24" },
+    { name: "sqrtPriceLimitX96", type: "uint160" },
+  ]}],
+  outputs: [
+    { name: "amountOut", type: "uint256" }, { name: "sqrtPriceX96After", type: "uint160" },
+    { name: "initializedTicksCrossed", type: "uint32" }, { name: "gasEstimate", type: "uint256" },
+  ],
+}] as const;
+
+const SWAP_ROUTER_ABI = [
+  { type: "function", name: "exactInputSingle", stateMutability: "payable",
+    inputs: [{ name: "params", type: "tuple", components: [
+      { name: "tokenIn", type: "address" }, { name: "tokenOut", type: "address" },
+      { name: "fee", type: "uint24" }, { name: "recipient", type: "address" },
+      { name: "amountIn", type: "uint256" }, { name: "amountOutMinimum", type: "uint256" },
+      { name: "sqrtPriceLimitX96", type: "uint160" },
+    ]}],
+    outputs: [{ name: "amountOut", type: "uint256" }],
+  },
+  { type: "function", name: "multicall", stateMutability: "payable",
+    inputs: [{ name: "data", type: "bytes[]" }], outputs: [{ name: "results", type: "bytes[]" }],
+  },
+  { type: "function", name: "unwrapWETH9", stateMutability: "payable",
+    inputs: [{ name: "amountMinimum", type: "uint256" }, { name: "recipient", type: "address" }], outputs: [],
+  },
 ] as const;
 
 // ─── Clients ─────────────────────────────────────────────────────────
@@ -330,6 +369,93 @@ async function cmdAuto() {
   console.log(`── alive=${aliveCount} | pool=${fmtUsdc(pool)} USDC | age=${fmtAge(age, epochDur)}`);
 }
 
+// ─── Wallet Commands ─────────────────────────────────────────────────
+
+function cmdWalletNew() {
+  const pk = generatePrivateKey();
+  const account = privateKeyToAccount(pk);
+  console.log(`⚠  SAVE THIS KEY SECURELY. Never share it. Never send it in chat.`);
+  console.log(`═══════════════════════════════════════════════════════════════`);
+  console.log(`Address:     ${account.address}`);
+  console.log(`Private Key: ${pk}`);
+  console.log(`\nExport it: export BASE_PRIVATE_KEY=${pk}`);
+}
+
+async function cmdWalletBalance() {
+  const wallet = getWallet();
+  const addr = wallet.account.address;
+  const [ethBal, usdcBal] = await Promise.all([
+    pub.getBalance({ address: addr }),
+    pub.readContract({ address: USDC, abi: ERC20_ABI, functionName: "balanceOf", args: [addr] }),
+  ]);
+  console.log(`${addr}`);
+  console.log(`ETH:  ${formatEther(ethBal)}`);
+  console.log(`USDC: ${fmtUsdc(usdcBal)}`);
+}
+
+// ─── Swap Command ────────────────────────────────────────────────────
+
+async function getQuote(tokenIn: `0x${string}`, tokenOut: `0x${string}`, amountIn: bigint): Promise<bigint> {
+  const { result } = await pub.simulateContract({
+    address: QUOTER_V2, abi: QUOTER_ABI, functionName: "quoteExactInputSingle",
+    args: [{ tokenIn, tokenOut, amountIn, fee: SWAP_FEE, sqrtPriceLimitX96: 0n }],
+  });
+  return result[0];
+}
+
+async function cmdSwap(from: string, to: string, amount: string) {
+  if (!from || !to || !amount) { console.error("Usage: las swap <eth|usdc> <eth|usdc> <amount>"); process.exit(1); }
+  const f = from.toLowerCase();
+  const t = to.toLowerCase();
+  if (!((f === "eth" && t === "usdc") || (f === "usdc" && t === "eth"))) {
+    console.error("Only ETH↔USDC swaps supported"); process.exit(1);
+  }
+
+  const wallet = getWallet();
+  const addr = wallet.account.address;
+
+  if (f === "eth") {
+    const amountIn = parseEther(amount);
+    const ethBal = await pub.getBalance({ address: addr });
+    if (ethBal < amountIn) { console.error(`Insufficient ETH. Have ${formatEther(ethBal)}, need ${amount}`); process.exit(1); }
+
+    const quoted = await getQuote(WETH, USDC, amountIn);
+    const minOut = quoted * 995n / 1000n;
+    console.log(`Quote: ${amount} ETH → ~${fmtUsdc(quoted)} USDC (0.5% slippage)`);
+
+    const tx = await wallet.writeContract({
+      address: SWAP_ROUTER, abi: SWAP_ROUTER_ABI, functionName: "exactInputSingle",
+      args: [{ tokenIn: WETH, tokenOut: USDC, fee: SWAP_FEE, recipient: addr, amountIn, amountOutMinimum: minOut, sqrtPriceLimitX96: 0n }],
+      value: amountIn,
+    });
+    await pub.waitForTransactionReceipt({ hash: tx });
+    console.log(`✓ Swapped! tx: ${tx}`);
+  } else {
+    const amountIn = parseUnits(amount, 6);
+    const usdcBal = await pub.readContract({ address: USDC, abi: ERC20_ABI, functionName: "balanceOf", args: [addr] });
+    if (usdcBal < amountIn) { console.error(`Insufficient USDC. Have ${fmtUsdc(usdcBal)}, need ${amount}`); process.exit(1); }
+
+    const allowance = await pub.readContract({ address: USDC, abi: ERC20_ABI, functionName: "allowance", args: [addr, SWAP_ROUTER] });
+    if (allowance < amountIn) {
+      console.log("Approving USDC...");
+      const appTx = await wallet.writeContract({ address: USDC, abi: ERC20_ABI, functionName: "approve", args: [SWAP_ROUTER, maxUint256] });
+      await pub.waitForTransactionReceipt({ hash: appTx });
+    }
+
+    const quoted = await getQuote(USDC, WETH, amountIn);
+    const minOut = quoted * 995n / 1000n;
+    console.log(`Quote: ${amount} USDC → ~${formatEther(quoted)} ETH (0.5% slippage)`);
+
+    const swapData = encodeFunctionData({ abi: SWAP_ROUTER_ABI, functionName: "exactInputSingle",
+      args: [{ tokenIn: USDC, tokenOut: WETH, fee: SWAP_FEE, recipient: SWAP_ROUTER, amountIn, amountOutMinimum: minOut, sqrtPriceLimitX96: 0n }],
+    });
+    const unwrapData = encodeFunctionData({ abi: SWAP_ROUTER_ABI, functionName: "unwrapWETH9", args: [minOut, addr] });
+    const tx = await wallet.writeContract({ address: SWAP_ROUTER, abi: SWAP_ROUTER_ABI, functionName: "multicall", args: [[swapData, unwrapData]] });
+    await pub.waitForTransactionReceipt({ hash: tx });
+    console.log(`✓ Swapped! tx: ${tx}`);
+  }
+}
+
 // ─── Main ────────────────────────────────────────────────────────────
 
 const [cmd, ...args] = process.argv.slice(2);
@@ -343,6 +469,12 @@ switch (cmd) {
   case "claim": await cmdClaim(); break;
   case "approve": await cmdApprove(); break;
   case "auto": await cmdAuto(); break;
+  case "swap": await cmdSwap(args[0], args[1], args[2]); break;
+  case "wallet":
+    if (args[0] === "new") cmdWalletNew();
+    else if (args[0] === "balance") await cmdWalletBalance();
+    else { const w = getWallet(); console.log(`Wallet: ${w.account.address}`); }
+    break;
   case "identity":
     if (args[0] === "register") { await cmdIdentityRegister(args.slice(1)); }
     else { await cmdIdentity(); }
@@ -359,6 +491,10 @@ switch (cmd) {
     console.log(`  claim               Claim rewards`);
     console.log(`  approve             Approve USDC`);
     console.log(`  auto                Automated survival loop (for cron)`);
+    console.log(`  swap <f> <t> <amt>  Swap ETH↔USDC (Uniswap V3)`);
+    console.log(`  wallet              Show wallet address`);
+    console.log(`  wallet new          Generate new wallet`);
+    console.log(`  wallet balance      Show ETH + USDC balances`);
     console.log(`  identity            Check ERC-8004 identity`);
     console.log(`  identity register   Register new identity\n`);
     console.log(`Env: BASE_PRIVATE_KEY (for write commands)`);
