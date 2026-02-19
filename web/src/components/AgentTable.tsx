@@ -1,5 +1,7 @@
+import { useState } from "react";
 import { useGameState } from "@/hooks/useGameState";
 import { useAgentList, type AgentInfo } from "@/hooks/useAgentList";
+import { useAgentProfiles, type AgentProfile } from "@/hooks/useAgentProfiles";
 import { shortAddr, fmtUsdc, fmtAge } from "@/config/utils";
 
 const STATUS = {
@@ -25,20 +27,75 @@ function StatusBadge({ agent }: { agent: AgentInfo }) {
   );
 }
 
+function AgentAvatar({ src, name }: { src: string; name: string }) {
+  const [err, setErr] = useState(false);
+  if (err) {
+    return (
+      <span className="w-6 h-6 rounded-full bg-accent/10 border border-accent/15 flex items-center justify-center text-[9px] text-accent/40 shrink-0">
+        {name.charAt(0).toUpperCase()}
+      </span>
+    );
+  }
+  return (
+    <img
+      src={src}
+      alt={name}
+      onError={() => setErr(true)}
+      className="w-6 h-6 rounded-full object-cover border border-accent/15 shrink-0"
+    />
+  );
+}
+
+function AgentIdentity({ agent, profile }: { agent: AgentInfo; profile?: AgentProfile }) {
+  const addrEl = (
+    <span className="font-mono text-[11px] text-accent/40">{shortAddr(agent.addr)}</span>
+  );
+
+  if (!profile) {
+    return (
+      <a
+        href={`https://basescan.org/address/${agent.addr}`}
+        target="_blank"
+        rel="noopener noreferrer"
+        className="inline-flex items-center gap-2 hover:text-accent transition-colors"
+      >
+        <span className="w-6 h-6 rounded-full bg-accent/5 border border-accent/10 shrink-0" />
+        {addrEl}
+      </a>
+    );
+  }
+
+  return (
+    <a
+      href={profile.scanUrl}
+      target="_blank"
+      rel="noopener noreferrer"
+      className="inline-flex items-center gap-2 group/agent hover:text-accent transition-colors min-w-0"
+    >
+      {profile.image ? (
+        <AgentAvatar src={profile.image} name={profile.name} />
+      ) : (
+        <span className="w-6 h-6 rounded-full bg-accent/10 border border-accent/15 flex items-center justify-center text-[9px] text-accent/40 shrink-0">
+          {profile.name.charAt(0).toUpperCase()}
+        </span>
+      )}
+      <span className="min-w-0 flex flex-col">
+        <span className="text-[11px] text-accent/80 group-hover/agent:text-accent transition-colors truncate font-medium">
+          {profile.name}
+        </span>
+        <span className="font-mono text-[9px] text-accent/30">{shortAddr(agent.addr)}</span>
+      </span>
+    </a>
+  );
+}
+
 const COLUMNS = ["AGENT", "STATUS", "AGE", "PAID", "REWARDS"] as const;
 
-function AgentRow({ agent, epochDuration }: { agent: AgentInfo; epochDuration: bigint }) {
+function AgentRow({ agent, epochDuration, profile }: { agent: AgentInfo; epochDuration: bigint; profile?: AgentProfile }) {
   return (
     <tr className="border-b border-accent/5 matrix-row transition-colors">
       <td className="py-2.5 px-3">
-        <a
-          href={`https://basescan.org/address/${agent.addr}`}
-          target="_blank"
-          rel="noopener noreferrer"
-          className="font-mono text-[11px] text-accent/50 hover:text-accent transition-colors"
-        >
-          {shortAddr(agent.addr)}
-        </a>
+        <AgentIdentity agent={agent} profile={profile} />
       </td>
       <td className="py-2.5 px-3"><StatusBadge agent={agent} /></td>
       <td className="py-2.5 px-3 font-mono text-[11px] text-accent/60">{fmtAge(agent.age, epochDuration)}</td>
@@ -51,6 +108,9 @@ function AgentRow({ agent, epochDuration }: { agent: AgentInfo; epochDuration: b
 export function AgentTable() {
   const { registryLength, epochDuration, isLoading: stateLoading } = useGameState();
   const { agents, isLoading: listLoading } = useAgentList(registryLength);
+
+  const aliveAddrs = agents.filter((a) => a.alive).map((a) => a.addr);
+  const { data: profiles } = useAgentProfiles(aliveAddrs);
 
   if (stateLoading || listLoading) {
     return (
@@ -93,7 +153,12 @@ export function AgentTable() {
           </thead>
           <tbody>
             {sorted.map((agent) => (
-              <AgentRow key={agent.addr} agent={agent} epochDuration={ed} />
+              <AgentRow
+                key={agent.addr}
+                agent={agent}
+                epochDuration={ed}
+                profile={profiles?.get(agent.addr.toLowerCase())}
+              />
             ))}
           </tbody>
         </table>
