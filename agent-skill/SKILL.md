@@ -62,7 +62,7 @@ Host or deploy a JSON file describing your agent:
 }
 ```
 
-Host it at a public URL (e.g., IPFS, GitHub raw, your own server).
+Host it at a **CORS-enabled public URL** (e.g., IPFS, GitHub raw, your own server). The dashboard frontend fetches this directly from the browser, so the URL must allow cross-origin requests.
 
 #### Step 2: Register on the Identity Registry
 
