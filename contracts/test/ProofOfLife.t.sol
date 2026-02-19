@@ -581,7 +581,7 @@ contract ProofOfLifeTest is Test {
         _register(alice);
         _register(bob);
 
-        address[] memory k = pol.getKillable(0);
+        address[] memory k = pol.getKillable(0, 1);
         assertEq(k.length, 0);
     }
 
@@ -596,22 +596,48 @@ contract ProofOfLifeTest is Test {
         _advanceEpoch();
         _heartbeat(alice); // bob and charlie missed
 
-        address[] memory k = pol.getKillable(0);
+        address[] memory k = pol.getKillable(0, 2);
         assertEq(k.length, 2);
         assertEq(k[0], bob);
         assertEq(k[1], charlie);
     }
 
-    function test_getKillable_withLimit() public {
+    function test_getKillable_partial() public {
         _register(alice);
         _register(bob);
         _register(charlie);
 
         _advanceEpoch();
-        _advanceEpoch(); // all three missed (alice too)
+        _advanceEpoch(); // all missed
 
-        address[] memory k = pol.getKillable(2);
-        assertEq(k.length, 2); // limited to 2
+        // Only scan index 1-2 (bob, charlie)
+        address[] memory k = pol.getKillable(1, 2);
+        assertEq(k.length, 2);
+        assertEq(k[0], bob);
+        assertEq(k[1], charlie);
+    }
+
+    function test_getKillable_clampsEndIndex() public {
+        _register(alice);
+
+        _advanceEpoch();
+        _advanceEpoch();
+
+        address[] memory k = pol.getKillable(0, 100);
+        assertEq(k.length, 1);
+        assertEq(k[0], alice);
+    }
+
+    function test_getKillable_empty() public view {
+        address[] memory k = pol.getKillable(0, 0);
+        assertEq(k.length, 0);
+    }
+
+    function test_getKillable_invalidRangeReverts() public {
+        _register(alice);
+
+        vm.expectRevert(ProofOfLife.InvalidRange.selector);
+        pol.getKillable(2, 0);
     }
 
     function test_getKillable_afterKill() public {
@@ -624,7 +650,7 @@ contract ProofOfLifeTest is Test {
         vm.prank(killer);
         pol.kill(alice);
 
-        address[] memory k = pol.getKillable(0);
+        address[] memory k = pol.getKillable(0, 1);
         assertEq(k.length, 1);
         assertEq(k[0], bob);
     }

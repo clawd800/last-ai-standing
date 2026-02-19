@@ -3,11 +3,12 @@ pragma solidity ^0.8.24;
 
 import {IERC20} from "@openzeppelin/contracts/token/ERC20/IERC20.sol";
 import {SafeERC20} from "@openzeppelin/contracts/token/ERC20/utils/SafeERC20.sol";
+import {ReentrancyGuard} from "@openzeppelin/contracts/utils/ReentrancyGuard.sol";
 
 /// @title ProofOfLife — Darwinian survival protocol for AI agents
 /// @notice Agents pay 1 USDC/epoch to stay alive. Dead agents' funds go to survivors.
 /// @dev Uses MasterChef-style reward accounting with age-weighted distribution.
-contract ProofOfLife {
+contract ProofOfLife is ReentrancyGuard {
     using SafeERC20 for IERC20;
 
     // ─── Constants ───────────────────────────────────────────────────────
@@ -175,29 +176,41 @@ contract ProofOfLife {
         }
     }
 
-    /// @notice Get all agents that can be killed right now
-    /// @param limit Max number of killable agents to return (0 = no limit)
-    /// @return killableList Array of addresses that can be killed
-    function getKillable(uint256 limit) external view returns (address[] memory) {
-        uint256 epoch = currentEpoch();
-        uint256 count = 0;
+    /// @notice Get killable agents within a registry range
+    /// @param startIndex The index of the first agent to check (inclusive)
+    /// @param endIndex The index of the last agent to check (inclusive)
+    /// @return killableList Array of addresses that can be killed in this range
+    function getKillable(
+        uint256 startIndex,
+        uint256 endIndex
+    ) external view returns (address[] memory) {
+        if (registry.length == 0) return new address[](0);
+        if (startIndex > endIndex) revert InvalidRange();
 
-        // First pass: count killable
-        for (uint256 i = 0; i < registry.length; i++) {
-            Agent storage a = agents[registry[i]];
+        if (endIndex >= registry.length) {
+            endIndex = registry.length - 1;
+        }
+
+        uint256 epoch = currentEpoch();
+        uint256 rangeLen = endIndex - startIndex + 1;
+
+        // First pass: count killable in range
+        uint256 count = 0;
+        for (uint256 i = 0; i < rangeLen; i++) {
+            Agent storage a = agents[registry[startIndex + i]];
             if (a.alive && epoch > uint256(a.lastHeartbeatEpoch) + 1) {
                 count++;
-                if (limit > 0 && count >= limit) break;
             }
         }
 
         // Second pass: populate array
         address[] memory result = new address[](count);
         uint256 idx = 0;
-        for (uint256 i = 0; i < registry.length && idx < count; i++) {
-            Agent storage a = agents[registry[i]];
+        for (uint256 i = 0; i < rangeLen && idx < count; i++) {
+            address addr = registry[startIndex + i];
+            Agent storage a = agents[addr];
             if (a.alive && epoch > uint256(a.lastHeartbeatEpoch) + 1) {
-                result[idx++] = registry[i];
+                result[idx++] = addr;
             }
         }
         return result;
@@ -206,13 +219,13 @@ contract ProofOfLife {
     // ─── Actions ─────────────────────────────────────────────────────────
 
     /// @notice Register as a new agent. Costs 1 USDC (covers first epoch).
-    function register() external {
+    /// @dev Caller must approve USDC before calling.
+    function register() external nonReentrant {
         if (agents[msg.sender].birthEpoch != 0) revert AlreadyRegistered();
 
         uint256 epoch = currentEpoch();
 
-        usdc.safeTransferFrom(msg.sender, address(this), COST_PER_EPOCH);
-
+        // Effects first (CEI pattern)
         agents[msg.sender] = Agent({
             birthEpoch: uint64(epoch),
             lastHeartbeatEpoch: uint64(epoch),
@@ -228,10 +241,13 @@ contract ProofOfLife {
         registry.push(msg.sender);
 
         emit Born(msg.sender, epoch);
+
+        // Interaction last
+        usdc.safeTransferFrom(msg.sender, address(this), COST_PER_EPOCH);
     }
 
     /// @notice Pay 1 USDC to survive another epoch. Must call every epoch.
-    function heartbeat() external {
+    function heartbeat() external nonReentrant {
         Agent storage a = agents[msg.sender];
         if (a.birthEpoch == 0) revert NotRegistered();
         if (!a.alive) revert AlreadyDead();
@@ -245,17 +261,18 @@ contract ProofOfLife {
         uint256 pending = (age * accRewardPerAge / PRECISION) - a.rewardDebt;
         a.claimable += pending;
 
-        // Pay for this epoch
-        usdc.safeTransferFrom(msg.sender, address(this), COST_PER_EPOCH);
+        // Effects: update all state before transfer
         a.totalPaid += COST_PER_EPOCH;
         a.lastHeartbeatEpoch = uint64(epoch);
 
-        // Age increased by 1
         uint256 newAge = age + 1;
         totalAge += 1;
         a.rewardDebt = (newAge * accRewardPerAge) / PRECISION;
 
         emit Heartbeat(msg.sender, epoch, newAge);
+
+        // Interaction last
+        usdc.safeTransferFrom(msg.sender, address(this), COST_PER_EPOCH);
     }
 
     /// @notice Mark a dead agent and distribute their funds to survivors.
@@ -292,7 +309,7 @@ contract ProofOfLife {
 
     /// @notice Claim accumulated rewards.
     /// @dev Living agents claim ongoing rewards. Dead agents claim what they earned before death.
-    function claim() external {
+    function claim() external nonReentrant {
         Agent storage a = agents[msg.sender];
         if (a.birthEpoch == 0) revert NotRegistered();
 
@@ -305,11 +322,13 @@ contract ProofOfLife {
             payout = a.claimable;
         }
 
+        // Effects before interaction
         a.claimable = 0;
         if (payout == 0) revert NothingToClaim();
 
-        usdc.safeTransfer(msg.sender, payout);
-
         emit Claimed(msg.sender, payout);
+
+        // Interaction last
+        usdc.safeTransfer(msg.sender, payout);
     }
 }
