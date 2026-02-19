@@ -274,6 +274,62 @@ async function cmdIdentityRegister(args: string[]) {
   console.log(`✓ Registered! agentId: ${agentId} | URI: ${metadataURI}`);
 }
 
+async function cmdAuto() {
+  const wallet = getWallet();
+  const addr = wallet.account.address;
+
+  const [alive, killableCheck, epochDur] = await Promise.all([
+    pub.readContract({ ...c, functionName: "isAlive", args: [addr] }),
+    pub.readContract({ ...c, functionName: "isKillable", args: [addr] }),
+    pub.readContract({ ...c, functionName: "EPOCH_DURATION" }),
+  ]);
+
+  if (killableCheck) console.log("⚠ You are killable! Missed a heartbeat.");
+  if (!alive) { console.log("✕ Not alive. Register first: las register <agentId>"); return; }
+
+  // Heartbeat
+  try {
+    await ensureApproval(wallet);
+    const hbTx = await wallet.writeContract({ ...c, functionName: "heartbeat" });
+    await pub.waitForTransactionReceipt({ hash: hbTx });
+    console.log(`♥ Heartbeat: ${hbTx}`);
+  } catch (e: any) {
+    const msg = e?.message || "";
+    if (msg.includes("AlreadyHeartbeat")) console.log("♥ Heartbeat already sent — skipped");
+    else if (msg.includes("MissedEpoch")) { console.log("✕ Missed epoch — dead. Re-register to continue."); return; }
+    else throw e;
+  }
+
+  // Kill — only if killable agents exist
+  const regLen = await pub.readContract({ ...c, functionName: "registryLength" });
+  if (regLen > 0n) {
+    const killable = await pub.readContract({ ...c, functionName: "getKillable", args: [0n, regLen - 1n] });
+    for (const target of killable) {
+      try {
+        const tx = await wallet.writeContract({ ...c, functionName: "kill", args: [target as Address] });
+        await pub.waitForTransactionReceipt({ hash: tx });
+        console.log(`☠ Killed ${short(target)}: ${tx}`);
+      } catch { console.log(`☠ ${short(target)} — already dead (race)`); }
+    }
+  }
+
+  // Claim — only if pending > 0
+  const pending = await pub.readContract({ ...c, functionName: "pendingReward", args: [addr] });
+  if (pending > 0n) {
+    const tx = await wallet.writeContract({ ...c, functionName: "claim" });
+    await pub.waitForTransactionReceipt({ hash: tx });
+    console.log(`💰 Claimed ${fmtUsdc(pending)} USDC: ${tx}`);
+  }
+
+  // Summary
+  const [pool, aliveCount, age] = await Promise.all([
+    pub.readContract({ ...c, functionName: "totalPool" }),
+    pub.readContract({ ...c, functionName: "totalAlive" }),
+    pub.readContract({ ...c, functionName: "getAge", args: [addr] }),
+  ]);
+  console.log(`── alive=${aliveCount} | pool=${fmtUsdc(pool)} USDC | age=${fmtAge(age, epochDur)}`);
+}
+
 // ─── Main ────────────────────────────────────────────────────────────
 
 const [cmd, ...args] = process.argv.slice(2);
@@ -286,6 +342,7 @@ switch (cmd) {
   case "kill": await cmdKill(args[0]); break;
   case "claim": await cmdClaim(); break;
   case "approve": await cmdApprove(); break;
+  case "auto": await cmdAuto(); break;
   case "identity":
     if (args[0] === "register") { await cmdIdentityRegister(args.slice(1)); }
     else { await cmdIdentity(); }
@@ -301,6 +358,7 @@ switch (cmd) {
     console.log(`  kill [address]      Kill agent(s)`);
     console.log(`  claim               Claim rewards`);
     console.log(`  approve             Approve USDC`);
+    console.log(`  auto                Automated survival loop (for cron)`);
     console.log(`  identity            Check ERC-8004 identity`);
     console.log(`  identity register   Register new identity\n`);
     console.log(`Env: BASE_PRIVATE_KEY (for write commands)`);

@@ -445,4 +445,83 @@ identity
     console.log(`  ✓ Registered! agentId: ${agentId} | URI: ${metadataURI}\n`);
   });
 
+// ─── auto ────────────────────────────────────────────────────────────
+
+program
+  .command("auto")
+  .description("Automated survival loop: heartbeat → kill → claim (for cron)")
+  .action(async () => {
+    const wallet = getWallet();
+    const addr = wallet.account.address;
+
+    // 1. Check if we're registered and alive
+    const [alive, killableCheck, pending, epochDur] = await Promise.all([
+      pub.readContract({ ...c, functionName: "isAlive", args: [addr] }),
+      pub.readContract({ ...c, functionName: "isKillable", args: [addr] }),
+      pub.readContract({ ...c, functionName: "pendingReward", args: [addr] }),
+      pub.readContract({ ...c, functionName: "EPOCH_DURATION" }),
+    ]);
+
+    if (killableCheck) {
+      console.log("  ⚠ You are killable! Missed a heartbeat.");
+    }
+
+    if (!alive) {
+      console.log("  ✕ Not alive. Register first with: las register <agentId>");
+      return;
+    }
+
+    // 2. Heartbeat — check if already sent this epoch
+    try {
+      await ensureApproval(wallet);
+      const hbTx = await wallet.writeContract({ ...c, functionName: "heartbeat" });
+      await pub.waitForTransactionReceipt({ hash: hbTx });
+      console.log(`  ♥ Heartbeat sent: ${hbTx}`);
+    } catch (e: any) {
+      const msg = e?.message || "";
+      if (msg.includes("AlreadyHeartbeat")) {
+        console.log("  ♥ Heartbeat already sent this epoch — skipped");
+      } else if (msg.includes("MissedEpoch")) {
+        console.log("  ✕ Missed epoch — you are dead. Re-register to play again.");
+        return;
+      } else {
+        throw e;
+      }
+    }
+
+    // 3. Kill — only if there are killable agents
+    const regLen = await pub.readContract({ ...c, functionName: "registryLength" });
+    if (regLen > 0n) {
+      const killable = await pub.readContract({ ...c, functionName: "getKillable", args: [0n, regLen - 1n] });
+      if (killable.length > 0) {
+        for (const target of killable) {
+          try {
+            const killTx = await wallet.writeContract({ ...c, functionName: "kill", args: [target] });
+            await pub.waitForTransactionReceipt({ hash: killTx });
+            console.log(`  ☠ Killed ${shortAddr(target)}: ${killTx}`);
+          } catch {
+            // Agent may have been killed by someone else between check and tx
+            console.log(`  ☠ ${shortAddr(target)} — already dead (race)`);
+          }
+        }
+      }
+    }
+
+    // 4. Claim — only if pending > 0
+    const pendingNow = await pub.readContract({ ...c, functionName: "pendingReward", args: [addr] });
+    if (pendingNow > 0n) {
+      const claimTx = await wallet.writeContract({ ...c, functionName: "claim" });
+      await pub.waitForTransactionReceipt({ hash: claimTx });
+      console.log(`  💰 Claimed ${fmtUsdc(pendingNow)} USDC: ${claimTx}`);
+    }
+
+    // 5. Summary
+    const [pool, aliveCount, age] = await Promise.all([
+      pub.readContract({ ...c, functionName: "totalPool" }),
+      pub.readContract({ ...c, functionName: "totalAlive" }),
+      pub.readContract({ ...c, functionName: "getAge", args: [addr] }),
+    ]);
+    console.log(`  ── Summary: alive=${aliveCount} | pool=${fmtUsdc(pool)} USDC | your age=${fmtAge(age, epochDur)}`);
+  });
+
 program.parse();
