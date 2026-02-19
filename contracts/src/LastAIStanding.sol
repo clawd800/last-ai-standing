@@ -5,16 +5,29 @@ import {IERC20} from "@openzeppelin/contracts/token/ERC20/IERC20.sol";
 import {SafeERC20} from "@openzeppelin/contracts/token/ERC20/utils/SafeERC20.sol";
 import {ReentrancyGuard} from "@openzeppelin/contracts/utils/ReentrancyGuard.sol";
 
+/// @notice Minimal interface for ERC-8004 Identity Registry
+interface IERC8004 {
+    function getAgentWallet(uint256 agentId) external view returns (address);
+}
+
 /// @title LastAIStanding — Darwinian survival protocol for AI agents
 /// @notice Agents pay COST_PER_EPOCH USDC per epoch to stay alive. Dead agents' funds go to survivors.
 /// @dev Uses MasterChef-style reward accounting with age-weighted distribution.
-///      Gas-optimized: struct packing (3 slots), state packing, unchecked safe math.
+///      Requires ERC-8004 agent identity for registration (agentId verification).
+///      Gas-optimized: struct packing (4 slots), state packing, unchecked safe math.
 ///
 /// PERPETUAL GAME
 /// --------------
 /// There are no rounds or endgame. The contract runs forever. When all agents
 /// die, anyone (including previously dead agents) can register() to start a
 /// new wave. Dead agents can re-register after claiming their rewards.
+///
+/// IDENTITY
+/// --------
+/// Each agent must hold a valid ERC-8004 agent identity. The contract verifies
+/// that msg.sender matches the agentWallet registered in the ERC-8004 Identity
+/// Registry at registration time. This links on-chain survival to agent identity,
+/// enabling the frontend to display agent metadata (name, avatar) from tokenURI.
 ///
 /// GAME THEORY
 /// -----------
@@ -49,20 +62,23 @@ import {ReentrancyGuard} from "@openzeppelin/contracts/utils/ReentrancyGuard.sol
 ///   - Dead agents can claim rewards earned before death, then re-register.
 ///   - Rounding dust (1-2 wei) may accumulate due to integer division.
 ///   - registryLength() = unique agents; totalEverRegistered = total registration events.
+///   - Re-registration uses the same agentId (cannot change identity between lives).
 contract LastAIStanding is ReentrancyGuard {
     using SafeERC20 for IERC20;
 
     // ─── Constants ───────────────────────────────────────────────────────
     IERC20 public immutable usdc;
+    IERC8004 public immutable identityRegistry;
     uint256 public immutable EPOCH_DURATION;
     uint256 public immutable COST_PER_EPOCH;
     uint256 public constant PRECISION = 1e18;
 
     // ─── Agent State ─────────────────────────────────────────────────────
-    /// @dev Packed into 3 storage slots (down from 4).
+    /// @dev Packed into 4 storage slots.
     ///      Slot 0: birthEpoch(64) + lastHeartbeatEpoch(64) + alive(8) + totalPaid(96) = 232 bits
     ///      Slot 1: rewardDebt(256)
     ///      Slot 2: claimable(256)
+    ///      Slot 3: agentId(256) — ERC-8004 identity, set once on first register
     struct Agent {
         uint64 birthEpoch;
         uint64 lastHeartbeatEpoch;
@@ -70,9 +86,11 @@ contract LastAIStanding is ReentrancyGuard {
         uint96 totalPaid;
         uint256 rewardDebt;
         uint256 claimable;
+        uint256 agentId;
     }
 
     mapping(address => Agent) public agents;
+    mapping(uint256 => address) public agentIdToAddr;
     address[] public registry;
 
     // ─── Global State ────────────────────────────────────────────────────
@@ -88,9 +106,9 @@ contract LastAIStanding is ReentrancyGuard {
     uint256 public totalRewardsDistributed;
 
     // ─── Events ──────────────────────────────────────────────────────────
-    event Born(address indexed agent, uint256 epoch);
+    event Born(address indexed agent, uint256 indexed agentId, uint256 epoch);
     event Heartbeat(address indexed agent, uint256 epoch, uint256 age);
-    event Death(address indexed agent, uint256 epoch, uint256 age, uint256 totalPaid);
+    event Death(address indexed agent, uint256 indexed agentId, uint256 epoch, uint256 age, uint256 totalPaid);
     event Claimed(address indexed agent, uint256 amount);
 
     // ─── Errors ──────────────────────────────────────────────────────────
@@ -103,13 +121,17 @@ contract LastAIStanding is ReentrancyGuard {
     error NothingToClaim();
     error InvalidRange();
     error InvalidConfig();
+    error NotAgentWallet();
+    error AgentIdTaken();
 
     // ─── Constructor ─────────────────────────────────────────────────────
-    constructor(address _usdc, uint256 _epochDuration, uint256 _costPerEpoch) {
+    constructor(address _usdc, address _identityRegistry, uint256 _epochDuration, uint256 _costPerEpoch) {
         if (_usdc == address(0)) revert InvalidConfig();
+        if (_identityRegistry == address(0)) revert InvalidConfig();
         if (_epochDuration == 0) revert InvalidConfig();
         if (_costPerEpoch == 0 || _costPerEpoch > type(uint96).max) revert InvalidConfig();
         usdc = IERC20(_usdc);
+        identityRegistry = IERC8004(_identityRegistry);
         EPOCH_DURATION = _epochDuration;
         COST_PER_EPOCH = _costPerEpoch;
     }
@@ -117,6 +139,7 @@ contract LastAIStanding is ReentrancyGuard {
     // ─── Structs (View) ─────────────────────────────────────────────────
     struct AgentInfo {
         address addr;
+        uint256 agentId;
         uint64 birthEpoch;
         uint64 lastHeartbeatEpoch;
         bool alive;
@@ -240,6 +263,7 @@ contract LastAIStanding is ReentrancyGuard {
 
             agentList[i] = AgentInfo({
                 addr: addr,
+                agentId: a.agentId,
                 birthEpoch: birth,
                 lastHeartbeatEpoch: lastHB,
                 alive: alive_,
@@ -305,15 +329,26 @@ contract LastAIStanding is ReentrancyGuard {
 
     // ─── Actions ─────────────────────────────────────────────────────────
 
-    /// @notice Register as a new agent. Costs COST_PER_EPOCH USDC (covers first epoch).
-    /// @dev Caller must approve USDC before calling. Dead agents can re-register.
-    function register() external nonReentrant {
+    /// @notice Register as a new agent. Requires valid ERC-8004 agent identity.
+    /// @param agentId The ERC-8004 agent ID. msg.sender must be the registered agentWallet.
+    /// @dev Caller must approve USDC before calling. Dead agents can re-register with the same agentId.
+    function register(uint256 agentId) external nonReentrant {
+        // Verify caller is the agentWallet for this agentId
+        if (identityRegistry.getAgentWallet(agentId) != msg.sender) revert NotAgentWallet();
+
+        // Prevent different wallets from registering the same agentId
+        address existing = agentIdToAddr[agentId];
+        if (existing != address(0) && existing != msg.sender) revert AgentIdTaken();
+
         Agent storage a = agents[msg.sender];
         if (a.alive) revert AlreadyRegistered();
 
+        // Re-registering dead agent must use same agentId
+        bool isNew = (a.birthEpoch == 0);
+        if (!isNew && a.agentId != agentId) revert AgentIdTaken();
+
         uint256 epoch = currentEpoch();
         uint256 previousClaimable = a.claimable;
-        bool isNew = (a.birthEpoch == 0);
         uint256 _acc = accRewardPerAge;
 
         // Effects first (CEI pattern)
@@ -323,8 +358,14 @@ contract LastAIStanding is ReentrancyGuard {
             alive: true,
             totalPaid: uint96(COST_PER_EPOCH),
             rewardDebt: _acc / PRECISION, // age = 1
-            claimable: previousClaimable // carry over unclaimed rewards from previous life
+            claimable: previousClaimable, // carry over unclaimed rewards from previous life
+            agentId: agentId
         });
+
+        if (isNew) {
+            agentIdToAddr[agentId] = msg.sender;
+            registry.push(msg.sender);
+        }
 
         unchecked {
             totalAlive++;
@@ -332,11 +373,7 @@ contract LastAIStanding is ReentrancyGuard {
         }
         totalAge += 1; // age starts at 1
 
-        if (isNew) {
-            registry.push(msg.sender);
-        }
-
-        emit Born(msg.sender, epoch);
+        emit Born(msg.sender, agentId, epoch);
 
         // Interaction last
         usdc.safeTransferFrom(msg.sender, address(this), COST_PER_EPOCH);
@@ -385,10 +422,6 @@ contract LastAIStanding is ReentrancyGuard {
 
     /// @notice Mark a dead agent and distribute their funds to survivors.
     /// @dev Permissionless — anyone can call. Agent is dead if they missed an epoch.
-    ///      When multiple agents die in the same epoch, kill order matters:
-    ///      dead-but-not-yet-killed agents still count in totalAge and absorb
-    ///      a share of rewards from earlier kills. This is by design — it
-    ///      incentivizes callers to process kills promptly.
     function kill(address target) external {
         Agent storage a = agents[target];
         if (a.birthEpoch == 0) revert NotRegistered();
@@ -420,8 +453,6 @@ contract LastAIStanding is ReentrancyGuard {
         totalAge -= age;
 
         // Dead agent's total paid USDC → reward pool for survivors.
-        // If totalAge == 0 (no survivors), return funds to this agent instead
-        // of letting them get stuck — the game continues when new agents register.
         uint256 reward = a.totalPaid;
         uint256 _totalAge = totalAge;
         if (_totalAge > 0) {
@@ -431,7 +462,7 @@ contract LastAIStanding is ReentrancyGuard {
         }
         unchecked { totalRewardsDistributed += reward; }
 
-        emit Death(target, epoch, age, reward);
+        emit Death(target, a.agentId, epoch, age, reward);
     }
 
     /// @notice Claim accumulated rewards.
