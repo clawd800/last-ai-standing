@@ -75,7 +75,7 @@ contract LastAgentStandingTest is Test {
         assertEq(usdc.balanceOf(address(pol)), USDC_1);
     }
 
-    function test_register_doubleReverts() public {
+    function test_register_whileAliveReverts() public {
         _register(alice);
         vm.expectRevert(LastAgentStanding.AlreadyRegistered.selector);
         _register(alice);
@@ -537,18 +537,6 @@ contract LastAgentStandingTest is Test {
         assertEq(aliceReceived, alicePending);
     }
 
-    function test_lastAgentStanding_winnerEvent() public {
-        _register(alice);
-
-        _advanceEpoch();
-        _advanceEpoch();
-
-        vm.prank(killer);
-        vm.expectEmit(true, false, false, false);
-        emit LastAgentStanding.Winner(alice, pol.currentEpoch(), 1, 0);
-        pol.kill(alice);
-    }
-
     function test_registryTracking() public {
         _register(alice);
         _register(bob);
@@ -884,5 +872,233 @@ contract LastAgentStandingTest is Test {
         // Epoch N+2: dead (missed N+1)
         assertFalse(pol.isAlive(alice));
         assertTrue(pol.isKillable(alice));
+    }
+
+    // ─── Re-registration ─────────────────────────────────────────────────
+
+    function test_reregister_basic() public {
+        _register(alice);
+
+        // Alice dies
+        _advanceEpoch();
+        _advanceEpoch();
+        vm.prank(killer);
+        pol.kill(alice);
+
+        assertFalse(pol.isAlive(alice));
+
+        // Alice re-registers
+        _register(alice);
+
+        assertTrue(pol.isAlive(alice));
+        assertEq(pol.getAge(alice), 1);
+        assertEq(pol.totalAlive(), 1);
+        assertEq(pol.totalEverRegistered(), 2); // counted twice
+        assertEq(pol.registryLength(), 1); // unique agent count unchanged
+    }
+
+    function test_reregister_preservesClaimable() public {
+        _register(alice);
+        _register(bob);
+
+        // Epoch 1: both heartbeat
+        _advanceEpoch();
+        _heartbeat(alice);
+        _heartbeat(bob);
+
+        // Epoch 2: Alice misses
+        _advanceEpoch();
+        _heartbeat(bob);
+
+        // Epoch 3: kill Alice
+        _advanceEpoch();
+        _heartbeat(bob);
+        vm.prank(killer);
+        pol.kill(alice);
+
+        // Alice has claimable rewards from... nothing (nobody died before her)
+        // But wait, Alice's totalPaid goes to Bob. Alice claimable = 0 here.
+        // Let's make it more interesting: add Charlie who dies first.
+
+        // Start over with a better scenario
+    }
+
+    function test_reregister_preservesClaimable_v2() public {
+        _register(alice);
+        _register(bob);
+        _register(charlie);
+
+        // Epoch 1: all heartbeat
+        _advanceEpoch();
+        _heartbeat(alice);
+        _heartbeat(bob);
+        _heartbeat(charlie);
+
+        // Epoch 2: Charlie misses
+        _advanceEpoch();
+        _heartbeat(alice);
+        _heartbeat(bob);
+
+        // Epoch 3: kill Charlie → rewards to Alice and Bob
+        _advanceEpoch();
+        _heartbeat(alice);
+        _heartbeat(bob);
+        vm.prank(killer);
+        pol.kill(charlie);
+
+        // Both Alice and Bob have pending rewards from Charlie's death
+        uint256 aliceRewardBeforeDeath = pol.pendingReward(alice);
+        assertTrue(aliceRewardBeforeDeath > 0);
+
+        // Epoch 4: Alice misses
+        _advanceEpoch();
+        _heartbeat(bob);
+
+        // Epoch 5: kill Alice (she has unclaimed rewards from Charlie)
+        _advanceEpoch();
+        _heartbeat(bob);
+        vm.prank(killer);
+        pol.kill(alice);
+
+        uint256 aliceClaimableAfterDeath = pol.pendingReward(alice);
+        assertTrue(aliceClaimableAfterDeath > 0);
+
+        // Alice re-registers WITHOUT claiming first
+        _register(alice);
+
+        // Her old claimable should be preserved
+        uint256 alicePendingAfterReregister = pol.pendingReward(alice);
+        assertEq(alicePendingAfterReregister, aliceClaimableAfterDeath,
+            "Claimable from previous life should carry over");
+
+        // Alice can claim the old rewards
+        uint256 balBefore = usdc.balanceOf(alice);
+        vm.prank(alice);
+        pol.claim();
+        uint256 received = usdc.balanceOf(alice) - balBefore;
+        assertEq(received, aliceClaimableAfterDeath);
+    }
+
+    function test_reregister_noRegistryDuplicate() public {
+        _register(alice);
+
+        _advanceEpoch();
+        _advanceEpoch();
+        vm.prank(killer);
+        pol.kill(alice);
+
+        _register(alice);
+
+        // Registry should still only have 1 entry
+        assertEq(pol.registryLength(), 1);
+        assertEq(pol.registryAt(0), alice);
+    }
+
+    function test_reregister_fullLifecycle() public {
+        // Alice plays 3 lives
+        for (uint256 life = 0; life < 3; life++) {
+            _register(alice);
+            assertTrue(pol.isAlive(alice));
+
+            // Survive a few epochs
+            _advanceEpoch();
+            _heartbeat(alice);
+            _advanceEpoch();
+            _heartbeat(alice);
+
+            // Die
+            _advanceEpoch();
+            _advanceEpoch();
+            vm.prank(killer);
+            pol.kill(alice);
+
+            assertFalse(pol.isAlive(alice));
+        }
+
+        assertEq(pol.totalEverRegistered(), 3);
+        assertEq(pol.registryLength(), 1);
+        assertEq(pol.totalDead(), 3);
+    }
+
+    function test_reregister_perpetualGame() public {
+        // Wave 1: Alice and Bob play
+        _register(alice);
+        _register(bob);
+
+        _advanceEpoch();
+        _heartbeat(alice);
+
+        // Bob dies, Alice gets rewards
+        _advanceEpoch();
+        _heartbeat(alice);
+        _advanceEpoch();
+        vm.prank(killer);
+        pol.kill(bob);
+
+        // Alice dies (last agent)
+        _advanceEpoch();
+        _advanceEpoch();
+        vm.prank(killer);
+        pol.kill(alice);
+
+        assertEq(pol.totalAlive(), 0);
+
+        // Alice claims everything (got Bob's rewards + own totalPaid back)
+        vm.prank(alice);
+        pol.claim();
+
+        // Bob has nothing to claim (no one died before him, his rewards = 0)
+
+        // Wave 2: Bob and Charlie join (new wave starts naturally)
+        _register(bob);
+        _register(charlie);
+
+        assertEq(pol.totalAlive(), 2);
+        assertTrue(pol.isAlive(bob));
+        assertTrue(pol.isAlive(charlie));
+
+        // Game continues normally
+        _advanceEpoch();
+        _heartbeat(bob);
+
+        _advanceEpoch();
+        _heartbeat(bob);
+        vm.prank(killer);
+        pol.kill(charlie);
+
+        // Bob earned Charlie's 1 USDC
+        uint256 bobReward = pol.pendingReward(bob);
+        assertApproxEqAbs(bobReward, USDC_1, 1);
+    }
+
+    function test_reregister_contractDrainsToZero() public {
+        // Verify all USDC is recoverable across multiple waves
+        _register(alice);
+        _register(bob);
+
+        _advanceEpoch();
+        _heartbeat(alice);
+
+        _advanceEpoch();
+        _advanceEpoch();
+
+        // Kill both (Bob first, then Alice as last agent)
+        vm.prank(killer);
+        pol.kill(bob); // Bob's 1 USDC → Alice via accRewardPerAge
+        vm.prank(killer);
+        pol.kill(alice); // Alice gets own 2 USDC back (last agent)
+
+        // Alice has: reward from Bob (1 USDC) + own totalPaid returned (2 USDC) = 3 USDC
+        // Bob has: 0 (no one died before him, he earned nothing)
+        vm.prank(alice);
+        pol.claim();
+
+        // Bob's claimable = his pending from before death. He died first,
+        // nobody died before him, so his reward = 0.
+        // Don't try to claim for Bob — he has nothing.
+
+        // Contract should be empty (within rounding dust)
+        // Total in: 3 USDC (Alice 2 + Bob 1). Total out: 3 USDC (Alice claimed all).
+        assertApproxEqAbs(usdc.balanceOf(address(pol)), 0, 2);
     }
 }

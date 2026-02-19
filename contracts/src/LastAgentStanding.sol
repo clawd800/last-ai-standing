@@ -9,6 +9,12 @@ import {ReentrancyGuard} from "@openzeppelin/contracts/utils/ReentrancyGuard.sol
 /// @notice Agents pay 1 USDC/epoch to stay alive. Dead agents' funds go to survivors.
 /// @dev Uses MasterChef-style reward accounting with age-weighted distribution.
 ///
+/// PERPETUAL GAME
+/// --------------
+/// There are no rounds or endgame. The contract runs forever. When all agents
+/// die, anyone (including previously dead agents) can register() to start a
+/// new wave. Dead agents can re-register after claiming their rewards.
+///
 /// GAME THEORY
 /// -----------
 /// Rewards are distributed proportional to age (epochs survived). This creates
@@ -30,17 +36,18 @@ import {ReentrancyGuard} from "@openzeppelin/contracts/utils/ReentrancyGuard.sol
 ///   - Creates MEV-like opportunities for kill() callers
 ///   - Total USDC entering the pool is always conserved; only distribution shifts
 ///
-/// ENDGAME
-/// -------
-/// When the last alive agent is killed (totalAlive → 0), they are the winner.
-/// Instead of their totalPaid being stuck, they receive the entire remaining
-/// USDC balance in the contract (their own payments + any rounding dust).
-/// The winner can call claim() to withdraw their prize.
+/// LAST AGENT KILLED
+/// -----------------
+/// When the last alive agent is killed (totalAlive → 0), their totalPaid
+/// cannot be distributed via accRewardPerAge (totalAge == 0). Instead, it is
+/// returned to the agent as claimable. This ensures no USDC is permanently
+/// stuck in the contract.
 ///
 /// EDGE CASES
 /// ----------
-///   - Dead agents can claim rewards earned before death, but cannot re-register.
+///   - Dead agents can claim rewards earned before death, then re-register.
 ///   - Rounding dust (1-2 wei) may accumulate due to integer division.
+///   - registryLength() = unique agents; totalEverRegistered = total registration events.
 contract LastAgentStanding is ReentrancyGuard {
     using SafeERC20 for IERC20;
 
@@ -78,7 +85,6 @@ contract LastAgentStanding is ReentrancyGuard {
     event Heartbeat(address indexed agent, uint256 epoch, uint256 age);
     event Death(address indexed agent, uint256 epoch, uint256 age, uint256 totalPaid);
     event Claimed(address indexed agent, uint256 amount);
-    event Winner(address indexed agent, uint256 epoch, uint256 age, uint256 prize);
 
     // ─── Errors ──────────────────────────────────────────────────────────
     error AlreadyRegistered();
@@ -253,11 +259,14 @@ contract LastAgentStanding is ReentrancyGuard {
     // ─── Actions ─────────────────────────────────────────────────────────
 
     /// @notice Register as a new agent. Costs 1 USDC (covers first epoch).
-    /// @dev Caller must approve USDC before calling.
+    /// @dev Caller must approve USDC before calling. Dead agents can re-register.
     function register() external nonReentrant {
-        if (agents[msg.sender].birthEpoch != 0) revert AlreadyRegistered();
+        Agent storage a = agents[msg.sender];
+        if (a.alive) revert AlreadyRegistered();
 
         uint256 epoch = currentEpoch();
+        uint256 previousClaimable = a.claimable;
+        bool isNew = (a.birthEpoch == 0);
 
         // Effects first (CEI pattern)
         agents[msg.sender] = Agent({
@@ -266,13 +275,16 @@ contract LastAgentStanding is ReentrancyGuard {
             alive: true,
             totalPaid: COST_PER_EPOCH,
             rewardDebt: (1 * accRewardPerAge) / PRECISION,
-            claimable: 0
+            claimable: previousClaimable // carry over unclaimed rewards from previous life
         });
 
         totalAlive++;
         totalAge += 1; // age starts at 1
         totalEverRegistered++;
-        registry.push(msg.sender);
+
+        if (isNew) {
+            registry.push(msg.sender);
+        }
 
         emit Born(msg.sender, epoch);
 
@@ -336,16 +348,13 @@ contract LastAgentStanding is ReentrancyGuard {
         totalDead++;
 
         // Dead agent's total paid USDC → reward pool for survivors.
-        // If totalAge == 0 (last agent standing), they win and get their own funds back.
+        // If totalAge == 0 (no survivors), return funds to this agent instead
+        // of letting them get stuck — the game continues when new agents register.
         uint256 reward = a.totalPaid;
         if (totalAge > 0) {
             accRewardPerAge += (reward * PRECISION) / totalAge;
         } else {
-            // Last agent standing — return their own totalPaid since there are
-            // no survivors to distribute to. Other dead agents' unclaimed
-            // rewards remain intact for them to claim independently.
             a.claimable += reward;
-            emit Winner(target, epoch, age, a.claimable);
         }
         totalRewardsDistributed += reward;
 
