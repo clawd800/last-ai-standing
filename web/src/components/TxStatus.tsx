@@ -20,27 +20,27 @@ export function TxStatus({ hash, isPending, isConfirming, isSuccess, error, onDo
   if (!isPending && !isConfirming && !isSuccess && !error) return null;
 
   return (
-    <div className="text-xs font-mono mt-3 px-3 py-2 rounded-lg bg-white/[0.02] border border-white/[0.04]">
-      {isPending && <p className="text-killable">Confirm in wallet…</p>}
+    <div className="text-[11px] font-mono mt-3 px-3 py-2 rounded border border-accent/10 bg-accent/[0.02]">
+      {isPending && <p className="text-killable">&gt; Awaiting wallet confirmation...</p>}
       {isConfirming && (
-        <p className="text-blue-400">
-          Confirming{" "}
+        <p className="text-accent/60">
+          &gt; Confirming tx{" "}
           {hash && (
             <a
               href={`https://basescan.org/tx/${hash}`}
               target="_blank"
               rel="noopener noreferrer"
-              className="underline underline-offset-2 hover:text-blue-300"
+              className="text-accent/80 hover:text-accent underline underline-offset-2"
             >
               {hash.slice(0, 10)}…
             </a>
           )}
         </p>
       )}
-      {isSuccess && <p className="text-alive">Confirmed</p>}
+      {isSuccess && <p className="text-alive text-glow-dim">&gt; Transaction confirmed ✓</p>}
       {error && (
-        <p className="text-accent">
-          {error.message.includes("User rejected") ? "Rejected by user" : error.message.slice(0, 80)}
+        <p className="text-dead">
+          &gt; {error.message.includes("User rejected") ? "Rejected by user" : error.message.slice(0, 80)}
         </p>
       )}
     </div>

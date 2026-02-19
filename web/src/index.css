@@ -1,61 +1,136 @@
 @import "tailwindcss";
 
 @theme {
-  --color-surface: #0a0a0f;
-  --color-surface-raised: rgba(255, 255, 255, 0.03);
-  --color-surface-hover: rgba(255, 255, 255, 0.06);
-  --color-border: rgba(255, 255, 255, 0.06);
-  --color-border-bright: rgba(239, 68, 68, 0.2);
-  --color-accent: #ef4444;
-  --color-accent-glow: rgba(239, 68, 68, 0.15);
-  --color-alive: #22c55e;
-  --color-dead: #6b7280;
-  --color-killable: #f59e0b;
+  --color-surface: #000000;
+  --color-surface-raised: rgba(0, 255, 65, 0.03);
+  --color-surface-hover: rgba(0, 255, 65, 0.06);
+  --color-border: rgba(0, 255, 65, 0.12);
+  --color-border-bright: rgba(0, 255, 65, 0.3);
+  --color-accent: #00ff41;
+  --color-accent-dim: #008f11;
+  --color-accent-glow: rgba(0, 255, 65, 0.15);
+  --color-alive: #00ff41;
+  --color-dead: #ff0040;
+  --color-killable: #ffb800;
   --font-mono: "JetBrains Mono", "SF Mono", "Fira Code", ui-monospace, monospace;
 }
 
 @layer base {
   body {
     background: var(--color-surface);
-    font-family: "Inter", -apple-system, sans-serif;
-    -webkit-font-smoothing: antialiased;
+    font-family: var(--font-mono);
+    -webkit-font-smoothing: none;
+    color: #00ff41;
+  }
+
+  ::selection {
+    background: rgba(0, 255, 65, 0.3);
+    color: #fff;
+  }
+
+  ::-webkit-scrollbar {
+    width: 4px;
+  }
+  ::-webkit-scrollbar-track {
+    background: transparent;
+  }
+  ::-webkit-scrollbar-thumb {
+    background: rgba(0, 255, 65, 0.2);
+    border-radius: 2px;
   }
 }
 
-/* Glass card */
-.glass {
-  background: var(--color-surface-raised);
-  border: 1px solid var(--color-border);
-  backdrop-filter: blur(12px);
+/* Terminal card */
+.terminal {
+  background: rgba(0, 255, 65, 0.02);
+  border: 1px solid rgba(0, 255, 65, 0.12);
+  position: relative;
 }
-.glass-accent {
-  background: var(--color-surface-raised);
-  border: 1px solid var(--color-border-bright);
-  backdrop-filter: blur(12px);
-  box-shadow: 0 0 30px var(--color-accent-glow), inset 0 1px 0 rgba(255,255,255,0.04);
+.terminal::before {
+  content: "";
+  position: absolute;
+  top: 0;
+  left: 0;
+  right: 0;
+  height: 1px;
+  background: linear-gradient(90deg, transparent, rgba(0, 255, 65, 0.4), transparent);
+}
+
+.terminal-accent {
+  background: rgba(0, 255, 65, 0.04);
+  border: 1px solid rgba(0, 255, 65, 0.25);
+  box-shadow: 0 0 20px rgba(0, 255, 65, 0.05), inset 0 0 20px rgba(0, 255, 65, 0.02);
 }
 
 /* Glow text */
 .text-glow {
-  text-shadow: 0 0 20px var(--color-accent-glow), 0 0 40px rgba(239, 68, 68, 0.08);
+  text-shadow: 0 0 10px rgba(0, 255, 65, 0.6), 0 0 20px rgba(0, 255, 65, 0.3), 0 0 40px rgba(0, 255, 65, 0.1);
+}
+.text-glow-dim {
+  text-shadow: 0 0 8px rgba(0, 255, 65, 0.3);
 }
 
 /* Pulsing dot */
 @keyframes pulse-dot {
   0%, 100% { opacity: 1; transform: scale(1); }
-  50% { opacity: 0.5; transform: scale(1.5); }
+  50% { opacity: 0.4; transform: scale(1.5); }
 }
 .animate-pulse-dot {
   animation: pulse-dot 2s ease-in-out infinite;
 }
 
-/* Scanline overlay */
-@keyframes scanline {
-  0% { transform: translateY(-100%); }
-  100% { transform: translateY(100vh); }
+/* Cursor blink */
+@keyframes blink {
+  0%, 49% { opacity: 1; }
+  50%, 100% { opacity: 0; }
+}
+.animate-blink {
+  animation: blink 1s step-end infinite;
 }
 
-/* Progress bar glow */
+/* Scanline overlay */
+.scanlines {
+  pointer-events: none;
+  position: fixed;
+  inset: 0;
+  z-index: 50;
+  background: repeating-linear-gradient(
+    0deg,
+    transparent,
+    transparent 2px,
+    rgba(0, 0, 0, 0.03) 2px,
+    rgba(0, 0, 0, 0.03) 4px
+  );
+}
+
+/* CRT vignette */
+.vignette {
+  pointer-events: none;
+  position: fixed;
+  inset: 0;
+  z-index: 51;
+  background: radial-gradient(ellipse at center, transparent 60%, rgba(0, 0, 0, 0.4) 100%);
+}
+
+/* Progress bar */
 .progress-glow {
-  box-shadow: 0 0 8px var(--color-accent), 0 0 16px var(--color-accent-glow);
+  box-shadow: 0 0 6px var(--color-accent), 0 0 12px var(--color-accent-glow);
+}
+
+/* Table hover */
+.matrix-row:hover {
+  background: rgba(0, 255, 65, 0.04);
+}
+
+/* Flickering animation */
+@keyframes flicker {
+  0%, 100% { opacity: 1; }
+  92% { opacity: 1; }
+  93% { opacity: 0.8; }
+  94% { opacity: 1; }
+  96% { opacity: 0.9; }
+  97% { opacity: 1; }
+}
+.animate-flicker {
+  animation: flicker 4s ease-in-out infinite;
 }

@@ -3,7 +3,6 @@ import { usePlayerState } from "@/hooks/usePlayerState";
 import { useGameState } from "@/hooks/useGameState";
 import { useActions } from "@/hooks/useActions";
 import { fmtUsdc, fmtAge } from "@/config/utils";
-import { Icon } from "./Icons";
 import { TxStatus } from "./TxStatus";
 
 export function PlayerPanel() {
@@ -14,9 +13,9 @@ export function PlayerPanel() {
 
   if (!isConnected || !address) {
     return (
-      <div className="glass rounded-xl p-8 text-center">
-        <div className="text-zinc-600 mb-3">{Icon.Person({ className: "w-10 h-10 mx-auto" })}</div>
-        <p className="text-zinc-500 text-sm">Connect wallet to enter the arena</p>
+      <div className="terminal rounded p-8 text-center">
+        <div className="text-accent/20 text-4xl mb-3 font-mono">&gt;_</div>
+        <p className="text-accent/30 text-xs">CONNECT WALLET TO ENTER THE ARENA</p>
       </div>
     );
   }
@@ -31,56 +30,56 @@ export function PlayerPanel() {
   const canClaim = player.pendingReward !== undefined && player.pendingReward > 0n;
   const epochDuration = game.epochDuration ?? 600n;
 
-  const statusColor = player.isAlive ? "text-alive" : isDead ? "text-dead" : "text-zinc-500";
+  const statusColor = player.isAlive ? "text-alive" : isDead ? "text-dead" : "text-accent/30";
   const statusText = player.isAlive ? "ALIVE" : isDead ? "DEAD" : "UNREGISTERED";
 
   return (
-    <div className="glass-accent rounded-xl p-6 space-y-5">
+    <div className="terminal-accent rounded p-5 space-y-5">
       {/* Header */}
       <div className="flex items-center justify-between">
         <div className="flex items-center gap-3">
-          <div className={statusColor}>
-            {player.isAlive ? Icon.Shield({ className: "w-6 h-6" }) : isDead ? Icon.Skull({ className: "w-6 h-6" }) : Icon.Person({ className: "w-6 h-6" })}
-          </div>
+          <span className={`text-lg ${statusColor} ${player.isAlive ? "text-glow-dim" : ""}`}>
+            {player.isAlive ? "◉" : isDead ? "✕" : "○"}
+          </span>
           <div>
-            <h2 className="text-sm font-semibold text-white">Your Agent</h2>
-            <span className={`text-xs font-mono font-bold uppercase tracking-wider ${statusColor}`}>{statusText}</span>
+            <div className="text-xs text-accent/50 tracking-widest">YOUR AGENT</div>
+            <span className={`text-xs font-bold tracking-wider ${statusColor}`}>[{statusText}]</span>
           </div>
         </div>
         {player.isAlive && (
-          <span className="w-2.5 h-2.5 rounded-full bg-alive animate-pulse-dot" />
+          <span className="w-2 h-2 rounded-full bg-alive animate-pulse-dot shadow-[0_0_8px_rgba(0,255,65,0.5)]" />
         )}
       </div>
 
-      {/* Stats grid */}
-      <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
-        <MiniStat label="Age" value={player.age ? fmtAge(player.age, epochDuration) : "—"} />
-        <MiniStat label="Rewards" value={`${fmtUsdc(player.pendingReward)} USDC`} accent={canClaim} />
-        <MiniStat label="Balance" value={`${fmtUsdc(player.usdcBalance)} USDC`} />
-        <MiniStat label="Allowance" value={needsApproval ? "Need approval" : "✓"} warn={needsApproval} />
+      {/* Stats */}
+      <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
+        <MiniStat label="AGE" value={player.age ? fmtAge(player.age, epochDuration) : "—"} />
+        <MiniStat label="REWARDS" value={`${fmtUsdc(player.pendingReward)} USDC`} accent={canClaim} />
+        <MiniStat label="BALANCE" value={`${fmtUsdc(player.usdcBalance)} USDC`} />
+        <MiniStat label="APPROVAL" value={needsApproval ? "REQUIRED" : "OK"} warn={needsApproval} />
       </div>
 
       {/* Actions */}
-      <div className="flex flex-wrap gap-2.5">
+      <div className="flex flex-wrap gap-2">
         {needsApproval ? (
-          <ActionBtn onClick={actions.approve} disabled={actions.isPending} variant="default">
-            Approve USDC
+          <ActionBtn onClick={actions.approve} disabled={actions.isPending}>
+            [APPROVE USDC]
           </ActionBtn>
         ) : (
           <>
             {(!isRegistered || isDead) && (
-              <ActionBtn onClick={actions.register} disabled={actions.isPending} variant="primary">
-                {Icon.Swords({ className: "w-4 h-4" })} Register
+              <ActionBtn onClick={actions.register} disabled={actions.isPending} primary>
+                [REGISTER]
               </ActionBtn>
             )}
             {player.isAlive && (
-              <ActionBtn onClick={actions.heartbeat} disabled={actions.isPending} variant="primary">
-                {Icon.Heart({ className: "w-4 h-4" })} Heartbeat
+              <ActionBtn onClick={actions.heartbeat} disabled={actions.isPending} primary>
+                [HEARTBEAT]
               </ActionBtn>
             )}
             {canClaim && (
-              <ActionBtn onClick={actions.claim} disabled={actions.isPending} variant="success">
-                {Icon.Token({ className: "w-4 h-4" })} Claim
+              <ActionBtn onClick={actions.claim} disabled={actions.isPending} success>
+                [CLAIM]
               </ActionBtn>
             )}
           </>
@@ -102,31 +101,30 @@ export function PlayerPanel() {
 function MiniStat({ label, value, accent, warn }: { label: string; value: string; accent?: boolean; warn?: boolean }) {
   return (
     <div>
-      <div className="text-[10px] text-zinc-600 uppercase tracking-widest">{label}</div>
-      <div className={`text-sm font-mono font-medium ${warn ? "text-killable" : accent ? "text-accent" : "text-zinc-200"}`}>
+      <div className="text-[9px] text-accent/25 tracking-widest">{label}</div>
+      <div className={`text-xs font-mono ${warn ? "text-killable" : accent ? "text-accent text-glow-dim" : "text-accent/70"}`}>
         {value}
       </div>
     </div>
   );
 }
 
-function ActionBtn({ onClick, disabled, variant, children }: {
+function ActionBtn({ onClick, disabled, primary, success, children }: {
   onClick: () => void;
   disabled: boolean;
-  variant: "default" | "primary" | "success";
+  primary?: boolean;
+  success?: boolean;
   children: React.ReactNode;
 }) {
-  const styles = {
-    default: "glass hover:bg-white/5 text-zinc-300",
-    primary: "bg-accent/90 hover:bg-accent text-white shadow-[0_0_15px_rgba(239,68,68,0.25)]",
-    success: "bg-emerald-600/90 hover:bg-emerald-500 text-white shadow-[0_0_15px_rgba(16,185,129,0.25)]",
-  };
+  const base = "px-4 py-1.5 rounded text-xs font-mono font-bold transition-all disabled:opacity-20 disabled:cursor-not-allowed cursor-pointer border";
+  const style = success
+    ? "border-alive/40 text-alive hover:bg-alive/10 hover:border-alive/60 hover:shadow-[0_0_12px_rgba(0,255,65,0.2)]"
+    : primary
+    ? "border-accent/40 text-accent hover:bg-accent/10 hover:border-accent/60 hover:shadow-[0_0_12px_rgba(0,255,65,0.2)]"
+    : "border-accent/20 text-accent/60 hover:bg-accent/5 hover:border-accent/40";
+
   return (
-    <button
-      onClick={onClick}
-      disabled={disabled}
-      className={`flex items-center gap-2 px-4 py-2 rounded-lg text-sm font-semibold transition-all disabled:opacity-30 disabled:cursor-not-allowed cursor-pointer ${styles[variant]}`}
-    >
+    <button onClick={onClick} disabled={disabled} className={`${base} ${style}`}>
       {children}
     </button>
   );

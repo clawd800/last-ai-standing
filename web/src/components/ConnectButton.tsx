@@ -1,6 +1,5 @@
 import { useAccount, useConnect, useDisconnect } from "wagmi";
 import { shortAddr } from "@/config/utils";
-import { Icon } from "./Icons";
 
 export function ConnectButton() {
   const { address, isConnected } = useAccount();
@@ -11,9 +10,9 @@ export function ConnectButton() {
     return (
       <button
         onClick={() => disconnect()}
-        className="glass flex items-center gap-2 px-4 py-2 rounded-lg text-sm font-mono text-zinc-300 hover:text-white hover:border-zinc-600 transition-all cursor-pointer"
+        className="flex items-center gap-2 px-3 py-1.5 border border-accent/30 rounded text-xs text-accent/80 hover:text-accent hover:border-accent/60 transition-all cursor-pointer font-mono"
       >
-        <span className="w-2 h-2 rounded-full bg-alive animate-pulse-dot" />
+        <span className="w-1.5 h-1.5 rounded-full bg-accent animate-pulse-dot" />
         {shortAddr(address)}
       </button>
     );
@@ -25,10 +24,9 @@ export function ConnectButton() {
         <button
           key={c.uid}
           onClick={() => connect({ connector: c })}
-          className="flex items-center gap-2 px-5 py-2.5 bg-accent hover:bg-red-500 rounded-lg text-sm font-semibold text-white transition-all shadow-[0_0_20px_rgba(239,68,68,0.3)] hover:shadow-[0_0_30px_rgba(239,68,68,0.5)] cursor-pointer"
+          className="px-4 py-1.5 border border-accent/40 rounded text-xs text-accent hover:bg-accent/10 hover:border-accent hover:shadow-[0_0_12px_rgba(0,255,65,0.2)] transition-all cursor-pointer font-mono"
         >
-          {Icon.Wallet({ className: "w-4 h-4" })}
-          {c.name === "Injected" ? "Connect" : c.name}
+          [{c.name === "Injected" ? "CONNECT" : c.name.toUpperCase()}]
         </button>
       ))}
     </div>

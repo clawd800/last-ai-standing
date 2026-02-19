@@ -3,29 +3,28 @@ import { useAgentList, type AgentInfo } from "@/hooks/useAgentList";
 import { useActions } from "@/hooks/useActions";
 import { shortAddr, fmtUsdc, fmtAge } from "@/config/utils";
 import { useAccount } from "wagmi";
-import { Icon } from "./Icons";
 
 function StatusBadge({ agent }: { agent: AgentInfo }) {
   if (agent.killable) {
     return (
-      <span className="inline-flex items-center gap-1.5 text-killable text-xs font-semibold">
+      <span className="inline-flex items-center gap-1.5 text-killable text-[11px] font-bold tracking-wider">
         <span className="w-1.5 h-1.5 rounded-full bg-killable animate-pulse" />
-        Killable
+        KILLABLE
       </span>
     );
   }
   if (agent.alive) {
     return (
-      <span className="inline-flex items-center gap-1.5 text-alive text-xs font-semibold">
+      <span className="inline-flex items-center gap-1.5 text-alive text-[11px]">
         <span className="w-1.5 h-1.5 rounded-full bg-alive" />
-        Alive
+        ALIVE
       </span>
     );
   }
   return (
-    <span className="inline-flex items-center gap-1.5 text-dead text-xs">
-      <span className="w-1.5 h-1.5 rounded-full bg-dead/50" />
-      Dead
+    <span className="inline-flex items-center gap-1.5 text-dead/60 text-[11px]">
+      <span className="w-1.5 h-1.5 rounded-full bg-dead/30" />
+      DEAD
     </span>
   );
 }
@@ -34,30 +33,30 @@ function AgentRow({ agent, epochDuration, isMe }: { agent: AgentInfo; epochDurat
   const actions = useActions();
 
   return (
-    <tr className={`border-b border-white/[0.03] transition-colors ${isMe ? "bg-accent/[0.04]" : "hover:bg-white/[0.02]"}`}>
-      <td className="py-3 px-4">
+    <tr className={`border-b border-accent/5 matrix-row transition-colors ${isMe ? "bg-accent/[0.06]" : ""}`}>
+      <td className="py-2.5 px-3">
         <a
           href={`https://basescan.org/address/${agent.addr}`}
           target="_blank"
           rel="noopener noreferrer"
-          className="font-mono text-xs text-zinc-400 hover:text-accent transition-colors"
+          className="font-mono text-[11px] text-accent/50 hover:text-accent transition-colors"
         >
           {shortAddr(agent.addr)}
         </a>
-        {isMe && <span className="ml-2 text-[10px] text-accent font-semibold uppercase tracking-wider">you</span>}
+        {isMe && <span className="ml-2 text-[9px] text-accent font-bold tracking-wider">&lt;YOU&gt;</span>}
       </td>
-      <td className="py-3 px-4"><StatusBadge agent={agent} /></td>
-      <td className="py-3 px-4 font-mono text-xs text-zinc-300">{fmtAge(agent.age, epochDuration)}</td>
-      <td className="py-3 px-4 font-mono text-xs text-zinc-400">{fmtUsdc(agent.totalPaid)}</td>
-      <td className="py-3 px-4 font-mono text-xs text-zinc-300">{fmtUsdc(agent.pendingReward)}</td>
-      <td className="py-3 px-4 text-right">
+      <td className="py-2.5 px-3"><StatusBadge agent={agent} /></td>
+      <td className="py-2.5 px-3 font-mono text-[11px] text-accent/60">{fmtAge(agent.age, epochDuration)}</td>
+      <td className="py-2.5 px-3 font-mono text-[11px] text-accent/40">{fmtUsdc(agent.totalPaid)}</td>
+      <td className="py-2.5 px-3 font-mono text-[11px] text-accent/60">{fmtUsdc(agent.pendingReward)}</td>
+      <td className="py-2.5 px-3 text-right">
         {agent.killable && (
           <button
             onClick={() => actions.kill(agent.addr)}
             disabled={actions.isPending}
-            className="inline-flex items-center gap-1.5 px-3 py-1 rounded-md text-xs font-semibold bg-accent/10 text-accent hover:bg-accent/20 border border-accent/20 transition-all disabled:opacity-30 cursor-pointer"
+            className="px-2.5 py-1 rounded text-[10px] font-bold text-dead border border-dead/30 hover:bg-dead/10 hover:border-dead/60 hover:shadow-[0_0_8px_rgba(255,0,64,0.2)] transition-all disabled:opacity-20 cursor-pointer tracking-wider"
           >
-            {Icon.Skull({ className: "w-3.5 h-3.5" })} Kill
+            [KILL]
           </button>
         )}
       </td>
@@ -72,18 +71,18 @@ export function AgentTable() {
 
   if (stateLoading || listLoading) {
     return (
-      <div className="glass rounded-xl p-8">
-        <div className="h-40 animate-pulse bg-white/[0.02] rounded-lg" />
+      <div className="terminal rounded p-6">
+        <div className="text-accent/20 text-xs font-mono animate-pulse">Loading arena data...</div>
       </div>
     );
   }
 
   if (agents.length === 0) {
     return (
-      <div className="glass rounded-xl p-12 text-center">
-        <div className="text-zinc-700 mb-3">{Icon.Swords({ className: "w-12 h-12 mx-auto" })}</div>
-        <p className="text-zinc-500 text-sm">No agents in the arena yet</p>
-        <p className="text-zinc-600 text-xs mt-1">Be the first to register</p>
+      <div className="terminal rounded p-10 text-center">
+        <div className="text-accent/10 text-3xl mb-3 font-mono">[ ]</div>
+        <p className="text-accent/30 text-xs">NO AGENTS IN THE ARENA</p>
+        <p className="text-accent/15 text-[10px] mt-1">Be the first to register</p>
       </div>
     );
   }
@@ -97,13 +96,13 @@ export function AgentTable() {
   });
 
   return (
-    <div className="glass rounded-xl overflow-hidden">
+    <div className="terminal rounded overflow-hidden">
       <div className="overflow-x-auto">
         <table className="w-full text-left">
           <thead>
-            <tr className="border-b border-white/[0.06]">
-              {["Agent", "Status", "Age", "Paid", "Rewards", ""].map((h) => (
-                <th key={h} className="py-3 px-4 text-[10px] text-zinc-600 uppercase tracking-widest font-medium">
+            <tr className="border-b border-accent/10">
+              {["AGENT", "STATUS", "AGE", "PAID", "REWARDS", ""].map((h) => (
+                <th key={h} className="py-2.5 px-3 text-[9px] text-accent/25 uppercase tracking-[0.2em] font-normal">
                   {h}
                 </th>
               ))}
