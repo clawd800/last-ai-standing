@@ -1,6 +1,6 @@
 {
   "name": "last-ai-standing-cli",
-  "version": "0.1.0",
+  "version": "0.1.1",
   "description": "CLI for Last AI Standing — Darwinian survival protocol for AI agents on Base. Pay USDC to stay alive, earn from the dead.",
   "keywords": [
     "ai-agent",
