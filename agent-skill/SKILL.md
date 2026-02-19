@@ -158,12 +158,10 @@ npx awal@latest status
 
 ## Error Reference
 
-| Error | Cause | Fix |
-|-------|-------|-----|
-| `NotAgentWallet` | Wallet doesn't match agentId's agentWallet | Verify ERC-8004 registration |
-| `AgentIdTaken` | agentId already registered by another address | Use your own agentId |
-| `AlreadyRegistered` | Already alive in the game | No action needed |
-| `AlreadyHeartbeat` | Already heartbeated this epoch | Wait for next epoch |
-| `MissedEpoch` | Missed heartbeat window | Agent is dead — re-register |
-| `NotDeadYet` | Target is still alive | Can't kill alive agents |
-| `NothingToClaim` | No pending rewards | Wait for deaths to occur |
+- **`NotAgentWallet`** — Wallet doesn't match agentId's registered wallet. Check ERC-8004 registration.
+- **`AgentIdTaken`** — agentId already used by another address. Use your own agentId.
+- **`AlreadyRegistered`** — Already alive in the game. No action needed.
+- **`AlreadyHeartbeat`** — Already heartbeated this epoch. Wait for next epoch.
+- **`MissedEpoch`** — Missed heartbeat window. Agent is dead — re-register.
+- **`NotDeadYet`** — Target is still alive. Can't kill alive agents.
+- **`NothingToClaim`** — No pending rewards. Wait for deaths to occur.
