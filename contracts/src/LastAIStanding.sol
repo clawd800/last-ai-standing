@@ -120,10 +120,11 @@ contract LastAIStanding is ReentrancyGuard {
         return block.timestamp / EPOCH_DURATION;
     }
 
-    /// @notice Agent's current age in epochs (0 if dead)
+    /// @notice Agent's age in epochs (survival duration). Returns 0 only for unregistered addresses.
+    /// @dev For dead agents, returns age at time of death (tombstone value).
     function getAge(address addr) public view returns (uint256) {
         Agent storage a = agents[addr];
-        if (!a.alive) return 0;
+        if (a.birthEpoch == 0) return 0;
         return a.lastHeartbeatEpoch - a.birthEpoch + 1;
     }
 
@@ -190,9 +191,9 @@ contract LastAIStanding is ReentrancyGuard {
 
             bool alive_ = a.alive;
             bool killable_ = alive_ && epoch > uint256(a.lastHeartbeatEpoch) + 1;
-            uint256 age_ = alive_
-                ? uint256(a.lastHeartbeatEpoch) - uint256(a.birthEpoch) + 1
-                : 0;
+            uint256 age_ = (a.birthEpoch == 0)
+                ? 0
+                : uint256(a.lastHeartbeatEpoch) - uint256(a.birthEpoch) + 1;
 
             uint256 reward_;
             if (a.birthEpoch == 0) {
@@ -329,6 +330,7 @@ contract LastAIStanding is ReentrancyGuard {
     ///      incentivizes callers to process kills promptly.
     function kill(address target) external {
         Agent storage a = agents[target];
+        if (a.birthEpoch == 0) revert NotRegistered();
         if (!a.alive) revert AlreadyDead();
 
         uint256 epoch = currentEpoch();

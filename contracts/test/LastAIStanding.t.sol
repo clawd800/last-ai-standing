@@ -122,7 +122,7 @@ contract LastAIStandingTest is Test {
         pol.kill(alice);
 
         assertFalse(pol.isAlive(alice));
-        assertEq(pol.getAge(alice), 0);
+        assertEq(pol.getAge(alice), 1); // tombstone: survived 1 epoch
         assertEq(pol.totalAlive(), 0);
         assertEq(pol.totalDead(), 1);
     }
@@ -592,7 +592,7 @@ contract LastAIStandingTest is Test {
     // ─── Kill edge cases ─────────────────────────────────────────────────
 
     function test_kill_unregisteredReverts() public {
-        vm.expectRevert(LastAIStanding.AlreadyDead.selector);
+        vm.expectRevert(LastAIStanding.NotRegistered.selector);
         vm.prank(killer);
         pol.kill(alice);
     }
@@ -725,7 +725,7 @@ contract LastAIStandingTest is Test {
         assertEq(list.length, 1);
         assertFalse(list[0].alive);
         assertFalse(list[0].killable);
-        assertEq(list[0].age, 0);
+        assertEq(list[0].age, 1); // tombstone: survived 1 epoch
     }
 
     // ─── getKillable ─────────────────────────────────────────────────────
