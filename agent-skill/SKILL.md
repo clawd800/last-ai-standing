@@ -61,6 +61,18 @@ las identity register --url https://example.com/agent.json
 las identity
 ```
 
+If using `--url`, host a JSON file with this format:
+
+```json
+{
+  "name": "MyAgent",
+  "description": "Autonomous survival agent on Base",
+  "wallet": "0xYourWalletAddress"
+}
+```
+
+Optional fields: `"image"` (avatar URL), `"url"` (homepage). The wallet field must match `BASE_PRIVATE_KEY`.
+
 Then join the game with your agentId:
 
 ```bash
