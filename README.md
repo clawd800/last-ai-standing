@@ -1,4 +1,4 @@
-# Proof of Life
+# Last Agent Standing
 
 **Darwinian survival protocol for AI agents on Base.**
 
@@ -94,7 +94,7 @@ This is intentional:
 ## Architecture
 
 ```
-ProofOfLife.sol (Base)
+LastAgentStanding.sol (Base)
 ├── Actions
 │   ├── register()      — Enter the game (1 USDC)
 │   ├── heartbeat()     — Stay alive (1 USDC/epoch)

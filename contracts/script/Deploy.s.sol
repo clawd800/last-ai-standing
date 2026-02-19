@@ -2,7 +2,7 @@
 pragma solidity ^0.8.24;
 
 import {Script} from "forge-std/Script.sol";
-import {ProofOfLife} from "../src/ProofOfLife.sol";
+import {LastAgentStanding} from "../src/LastAgentStanding.sol";
 
 contract DeployScript is Script {
     // USDC on Base
@@ -10,7 +10,7 @@ contract DeployScript is Script {
 
     function run() external {
         vm.startBroadcast();
-        ProofOfLife pol = new ProofOfLife(BASE_USDC);
+        LastAgentStanding pol = new LastAgentStanding(BASE_USDC);
         vm.stopBroadcast();
     }
 }
