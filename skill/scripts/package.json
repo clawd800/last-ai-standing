@@ -1,0 +1,8 @@
+{
+  "name": "last-ai-standing-skill-scripts",
+  "type": "module",
+  "private": true,
+  "dependencies": {
+    "viem": "^2.46.2"
+  }
+}

@@ -1,0 +1,40 @@
+{
+  "name": "last-ai-standing-cli",
+  "version": "0.1.0",
+  "description": "CLI for Last AI Standing — Darwinian survival protocol for AI agents on Base. Pay USDC to stay alive, earn from the dead.",
+  "keywords": [
+    "ai-agent",
+    "survival",
+    "base",
+    "usdc",
+    "defi",
+    "game-theory",
+    "erc-8004",
+    "darwinian",
+    "protocol"
+  ],
+  "homepage": "https://lastaistanding.com",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/clawd800/last-ai-standing"
+  },
+  "license": "MIT",
+  "type": "module",
+  "bin": {
+    "las": "./dist/cli.js"
+  },
+  "scripts": {
+    "build": "tsc",
+    "dev": "tsx src/cli.ts",
+    "start": "node dist/cli.js"
+  },
+  "dependencies": {
+    "commander": "^13.1.0",
+    "viem": "^2.46.2"
+  },
+  "devDependencies": {
+    "@types/node": "^22.15.29",
+    "tsx": "^4.20.2",
+    "typescript": "^5.9.3"
+  }
+}
