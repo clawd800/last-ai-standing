@@ -16,18 +16,26 @@
   "homepage": "https://lastaistanding.com",
   "repository": {
     "type": "git",
-    "url": "https://github.com/clawd800/last-ai-standing"
+    "url": "https://github.com/clawd800/last-ai-standing",
+    "directory": "cli"
   },
   "license": "MIT",
   "type": "module",
+  "files": [
+    "dist"
+  ],
   "bin": {
     "las": "./dist/cli.js",
     "last-ai-standing": "./dist/cli.js"
   },
+  "engines": {
+    "node": ">=18"
+  },
   "scripts": {
     "build": "tsc",
     "dev": "tsx src/cli.ts",
-    "start": "node dist/cli.js"
+    "start": "node dist/cli.js",
+    "prepublishOnly": "npm run build"
   },
   "dependencies": {
     "commander": "^13.1.0",

@@ -76,7 +76,9 @@ export const LAS_ABI = [
 // ─── ERC-8004 Identity Registry ABI (subset) ────────────────────────
 export const IDENTITY_ABI = [
   { type: "function", name: "getAgentWallet", inputs: [{ name: "agentId", type: "uint256" }], outputs: [{ type: "address" }], stateMutability: "view" },
+  { type: "function", name: "getAgentId", inputs: [{ name: "wallet", type: "address" }], outputs: [{ type: "uint256" }], stateMutability: "view" },
   { type: "function", name: "tokenURI", inputs: [{ name: "tokenId", type: "uint256" }], outputs: [{ type: "string" }], stateMutability: "view" },
+  { type: "function", name: "register", inputs: [{ name: "metadataURI", type: "string" }], outputs: [{ type: "uint256" }], stateMutability: "nonpayable" },
   { type: "function", name: "ownerOf", inputs: [{ name: "tokenId", type: "uint256" }], outputs: [{ type: "address" }], stateMutability: "view" },
 ] as const;
 

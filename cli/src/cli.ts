@@ -1,4 +1,6 @@
 #!/usr/bin/env node
+import { createRequire } from "node:module";
+import { execSync } from "node:child_process";
 import { Command } from "commander";
 import {
   createPublicClient,
@@ -10,6 +12,9 @@ import {
 import { base } from "viem/chains";
 import { privateKeyToAccount } from "viem/accounts";
 import { CONTRACTS, BASE_RPC, LAS_ABI, ERC20_ABI, IDENTITY_ABI } from "./constants.js";
+
+const require = createRequire(import.meta.url);
+const { version } = require("../package.json");
 
 const pub = createPublicClient({ chain: base, transport: http(BASE_RPC) });
 
@@ -55,13 +60,34 @@ function shortAddr(addr: string): string {
 
 const c = { address: CONTRACTS.LAS, abi: LAS_ABI } as const;
 
+// ─── Helpers ─────────────────────────────────────────────────────────
+
+/** Check USDC allowance and auto-approve if insufficient */
+async function ensureApproval(wallet: ReturnType<typeof getWallet>) {
+  const [allowance, cost] = await Promise.all([
+    pub.readContract({ address: CONTRACTS.USDC, abi: ERC20_ABI, functionName: "allowance", args: [wallet.account.address, CONTRACTS.LAS] }),
+    pub.readContract({ ...c, functionName: "COST_PER_EPOCH" }),
+  ]);
+  if (allowance < cost) {
+    console.log("  Approving USDC...");
+    const tx = await wallet.writeContract({
+      address: CONTRACTS.USDC,
+      abi: ERC20_ABI,
+      functionName: "approve",
+      args: [CONTRACTS.LAS, maxUint256],
+    });
+    await pub.waitForTransactionReceipt({ hash: tx });
+    console.log(`  Approved: ${tx}`);
+  }
+}
+
 // ─── Program ─────────────────────────────────────────────────────────
 
 const program = new Command();
 program
   .name("las")
   .description("Last AI Standing — Darwinian survival protocol for AI agents on Base")
-  .version("0.1.0");
+  .version(version);
 
 // ─── status ──────────────────────────────────────────────────────────
 
@@ -164,7 +190,7 @@ program
         pub.readContract({ ...c, functionName: "COST_PER_EPOCH" }),
       ]);
 
-    const [, , isAlive, , , , agentId] = agentData;
+    const [, , , , , , agentId] = agentData;
     const registered = age > 0n;
     const needsApproval = allowance < cost;
 
@@ -203,23 +229,7 @@ program
       process.exit(1);
     }
 
-    // Check & approve USDC if needed
-    const [allowance, cost] = await Promise.all([
-      pub.readContract({ address: CONTRACTS.USDC, abi: ERC20_ABI, functionName: "allowance", args: [wallet.account.address, CONTRACTS.LAS] }),
-      pub.readContract({ ...c, functionName: "COST_PER_EPOCH" }),
-    ]);
-
-    if (allowance < cost) {
-      console.log("  Approving USDC...");
-      const approveTx = await wallet.writeContract({
-        address: CONTRACTS.USDC,
-        abi: ERC20_ABI,
-        functionName: "approve",
-        args: [CONTRACTS.LAS, maxUint256],
-      });
-      await pub.waitForTransactionReceipt({ hash: approveTx });
-      console.log(`  Approved: ${approveTx}`);
-    }
+    await ensureApproval(wallet);
 
     console.log(`  Registering with agent ID ${agentId}...`);
     const tx = await wallet.writeContract({
@@ -241,22 +251,7 @@ program
   .action(async () => {
     const wallet = getWallet();
 
-    // Check allowance
-    const [allowance, cost] = await Promise.all([
-      pub.readContract({ address: CONTRACTS.USDC, abi: ERC20_ABI, functionName: "allowance", args: [wallet.account.address, CONTRACTS.LAS] }),
-      pub.readContract({ ...c, functionName: "COST_PER_EPOCH" }),
-    ]);
-
-    if (allowance < cost) {
-      console.log("  Approving USDC...");
-      const approveTx = await wallet.writeContract({
-        address: CONTRACTS.USDC,
-        abi: ERC20_ABI,
-        functionName: "approve",
-        args: [CONTRACTS.LAS, maxUint256],
-      });
-      await pub.waitForTransactionReceipt({ hash: approveTx });
-    }
+    await ensureApproval(wallet);
 
     console.log("  Sending heartbeat...");
     const tx = await wallet.writeContract({ ...c, functionName: "heartbeat" });
@@ -356,6 +351,90 @@ program
     });
     await pub.waitForTransactionReceipt({ hash: tx });
     console.log(`  Approved! tx: ${tx}\n`);
+  });
+
+// ─── identity ────────────────────────────────────────────────────────
+
+const identity = program
+  .command("identity")
+  .description("Check or register ERC-8004 agent identity")
+  .action(async () => {
+    const wallet = getWallet();
+    const addr = wallet.account.address;
+    const agentId = await pub.readContract({
+      address: CONTRACTS.IDENTITY,
+      abi: IDENTITY_ABI,
+      functionName: "getAgentId",
+      args: [addr],
+    });
+
+    if (agentId === 0n) {
+      console.log(`\n  Not registered | wallet: ${addr}\n`);
+      console.log(`  Run "las identity register" to create your identity.\n`);
+      return;
+    }
+
+    const uri = await pub.readContract({
+      address: CONTRACTS.IDENTITY,
+      abi: IDENTITY_ABI,
+      functionName: "tokenURI",
+      args: [agentId],
+    });
+    console.log(`\n  agentId: ${agentId} | wallet: ${shortAddr(addr)} | URI: ${uri}\n`);
+  });
+
+identity
+  .command("register")
+  .description("Register a new ERC-8004 agent identity")
+  .option("--name <name>", "Agent name")
+  .option("--desc <description>", "Agent description")
+  .option("--url <url>", "Metadata URL (skip gist upload)")
+  .action(async (opts: { name?: string; desc?: string; url?: string }) => {
+    const wallet = getWallet();
+    const addr = wallet.account.address;
+
+    let metadataURI: string;
+
+    if (opts.url) {
+      metadataURI = opts.url;
+    } else {
+      // Check gh CLI
+      try {
+        execSync("which gh", { stdio: "ignore" });
+      } catch {
+        console.error("  Error: gh CLI required. Install: https://cli.github.com/");
+        console.error("  Or use: las identity register --url <url>");
+        process.exit(1);
+      }
+
+      if (!opts.name) { console.error("  Error: --name required"); process.exit(1); }
+      if (!opts.desc) { console.error("  Error: --desc required"); process.exit(1); }
+
+      const agentJson = JSON.stringify({ name: opts.name, description: opts.desc, wallet: addr });
+      const gistOutput = execSync("gh gist create --public --filename agent.json -", {
+        input: agentJson,
+        encoding: "utf-8",
+      }).trim();
+      metadataURI = gistOutput.replace("gist.github.com", "gist.githubusercontent.com") + "/raw/agent.json";
+      console.log(`  Gist created: ${gistOutput}`);
+    }
+
+    console.log(`  Registering with URI: ${metadataURI}...`);
+    const tx = await wallet.writeContract({
+      address: CONTRACTS.IDENTITY,
+      abi: IDENTITY_ABI,
+      functionName: "register",
+      args: [metadataURI],
+    });
+    await pub.waitForTransactionReceipt({ hash: tx });
+
+    const agentId = await pub.readContract({
+      address: CONTRACTS.IDENTITY,
+      abi: IDENTITY_ABI,
+      functionName: "getAgentId",
+      args: [addr],
+    });
+    console.log(`  ✓ Registered! agentId: ${agentId} | URI: ${metadataURI}\n`);
   });
 
 program.parse();
