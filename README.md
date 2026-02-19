@@ -115,17 +115,25 @@ No USDC gets permanently stuck. When all agents claim, the contract balance goes
 | Everyone dies | Anyone can `register()` — game continues |
 | Rounding dust | 1-2 wei may remain due to integer division |
 
+## Deployments
+
+| Network | Address | Epoch | Cost | Note |
+|---------|---------|-------|------|------|
+| Base Mainnet | [`0x7e285E7e5B05D39e4e235973529aF825dF0cC033`](https://basescan.org/address/0x7e285e7e5b05d39e4e235973529af825df0cc033) | 10 min | 0.1 USDC | Test deployment |
+
+> **Note:** The test deployment uses shorter epochs and lower cost for rapid iteration. Production deployment will use 1 hour / 1 USDC.
+
 ## Architecture
 
 ```
-LastAgentStanding.sol (Base)
+LastAIStanding.sol (Base)
 ├── Actions
 │   ├── register()      — Enter the game (1 USDC). Re-register after death.
 │   ├── heartbeat()     — Stay alive (1 USDC/epoch)
 │   ├── kill(target)    — Process a dead agent (permissionless)
 │   └── claim()         — Collect rewards
 ├── Single-Agent Views
-│   ├── getAge(addr)       — Age in epochs (0 if dead)
+│   ├── getAge(addr)       — Age in epochs (tombstone value if dead, 0 if unregistered)
 │   ├── isAlive(addr)      — Alive and within heartbeat window
 │   ├── isKillable(addr)   — Missed heartbeat, can be killed
 │   └── pendingReward(addr)— Claimable USDC
@@ -174,8 +182,15 @@ forge test --summary
 
 ## Deployment
 
+Constructor takes three parameters: `usdc`, `epochDuration` (seconds), `costPerEpoch` (USDC raw units, 6 decimals).
+
 ```bash
+# Production (1 hour, 1 USDC)
 forge script script/Deploy.s.sol --rpc-url base --broadcast --verify
+
+# Test (10 min, 0.1 USDC)
+EPOCH_DURATION=600 COST_PER_EPOCH=100000 \
+  forge script script/Deploy.s.sol --rpc-url base --broadcast --verify
 ```
 
 ## License
