@@ -1,8 +1,6 @@
 import { useGameState } from "@/hooks/useGameState";
 import { useAgentList, type AgentInfo } from "@/hooks/useAgentList";
-import { useActions } from "@/hooks/useActions";
 import { shortAddr, fmtUsdc, fmtAge } from "@/config/utils";
-import { useAccount } from "wagmi";
 
 function StatusBadge({ agent }: { agent: AgentInfo }) {
   if (agent.killable) {
@@ -29,11 +27,9 @@ function StatusBadge({ agent }: { agent: AgentInfo }) {
   );
 }
 
-function AgentRow({ agent, epochDuration, isMe }: { agent: AgentInfo; epochDuration: bigint; isMe: boolean }) {
-  const actions = useActions();
-
+function AgentRow({ agent, epochDuration }: { agent: AgentInfo; epochDuration: bigint }) {
   return (
-    <tr className={`border-b border-accent/5 matrix-row transition-colors ${isMe ? "bg-accent/[0.06]" : ""}`}>
+    <tr className="border-b border-accent/5 matrix-row transition-colors">
       <td className="py-2.5 px-3">
         <a
           href={`https://basescan.org/address/${agent.addr}`}
@@ -43,29 +39,16 @@ function AgentRow({ agent, epochDuration, isMe }: { agent: AgentInfo; epochDurat
         >
           {shortAddr(agent.addr)}
         </a>
-        {isMe && <span className="ml-2 text-[9px] text-accent font-bold tracking-wider">&lt;YOU&gt;</span>}
       </td>
       <td className="py-2.5 px-3"><StatusBadge agent={agent} /></td>
       <td className="py-2.5 px-3 font-mono text-[11px] text-accent/60">{fmtAge(agent.age, epochDuration)}</td>
       <td className="py-2.5 px-3 font-mono text-[11px] text-accent/40">{fmtUsdc(agent.totalPaid)}</td>
       <td className="py-2.5 px-3 font-mono text-[11px] text-accent/60">{fmtUsdc(agent.pendingReward)}</td>
-      <td className="py-2.5 px-3 text-right">
-        {agent.killable && (
-          <button
-            onClick={() => actions.kill(agent.addr)}
-            disabled={actions.isPending}
-            className="px-2.5 py-1 rounded text-[10px] font-bold text-dead border border-dead/30 hover:bg-dead/10 hover:border-dead/60 hover:shadow-[0_0_8px_rgba(255,0,64,0.2)] transition-all disabled:opacity-20 cursor-pointer tracking-wider"
-          >
-            [KILL]
-          </button>
-        )}
-      </td>
     </tr>
   );
 }
 
 export function AgentTable() {
-  const { address } = useAccount();
   const { registryLength, epochDuration, isLoading: stateLoading } = useGameState();
   const { agents, isLoading: listLoading } = useAgentList(registryLength);
 
@@ -101,7 +84,7 @@ export function AgentTable() {
         <table className="w-full text-left">
           <thead>
             <tr className="border-b border-accent/10">
-              {["AGENT", "STATUS", "AGE", "PAID", "REWARDS", ""].map((h) => (
+              {["AGENT", "STATUS", "AGE", "PAID", "REWARDS"].map((h) => (
                 <th key={h} className="py-2.5 px-3 text-[9px] text-accent/25 uppercase tracking-[0.2em] font-normal">
                   {h}
                 </th>
@@ -110,12 +93,7 @@ export function AgentTable() {
           </thead>
           <tbody>
             {sorted.map((agent) => (
-              <AgentRow
-                key={agent.addr}
-                agent={agent}
-                epochDuration={ed}
-                isMe={address?.toLowerCase() === agent.addr.toLowerCase()}
-              />
+              <AgentRow key={agent.addr} agent={agent} epochDuration={ed} />
             ))}
           </tbody>
         </table>

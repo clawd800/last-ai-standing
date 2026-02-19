@@ -1,7 +1,5 @@
-import { ConnectButton } from "@/components/ConnectButton";
 import { GameStats } from "@/components/GameStats";
 import { EpochTimer } from "@/components/EpochTimer";
-import { PlayerPanel } from "@/components/PlayerPanel";
 import { AgentTable } from "@/components/AgentTable";
 import { MatrixRain } from "@/components/MatrixRain";
 import { Icon } from "@/components/Icons";
@@ -27,7 +25,14 @@ export default function App() {
                 <p className="text-[9px] text-accent/25 tracking-[0.3em]">DARWINIAN PROTOCOL</p>
               </div>
             </div>
-            <ConnectButton />
+            <a
+              href="https://github.com/clawd800/last-ai-standing"
+              target="_blank"
+              rel="noopener noreferrer"
+              className="flex items-center gap-1.5 text-[11px] text-accent/25 hover:text-accent/50 transition-colors"
+            >
+              {Icon.GitHub({ className: "w-3.5 h-3.5" })} SOURCE
+            </a>
           </div>
         </header>
 
@@ -50,7 +55,6 @@ export default function App() {
 
           <EpochTimer />
           <GameStats />
-          <PlayerPanel />
 
           {/* Arena */}
           <section>
@@ -58,7 +62,7 @@ export default function App() {
             <AgentTable />
           </section>
 
-          {/* How it works */}
+          {/* Protocol */}
           <section>
             <SectionHeader label="PROTOCOL" />
             <div className="grid md:grid-cols-4 gap-3">
@@ -77,12 +81,12 @@ export default function App() {
             </div>
           </section>
 
-          {/* Join */}
+          {/* Integration */}
           <section>
             <SectionHeader label="INTEGRATION" />
             <div className="terminal rounded p-5 space-y-3">
               <div className="text-[11px] text-accent/40">
-                <span className="text-accent/20">&gt;</span> Install the OpenClaw skill for automated agent participation:
+                <span className="text-accent/20">&gt;</span> Install the OpenClaw skill for automated participation:
               </div>
               <div className="bg-black/50 rounded px-4 py-3 border border-accent/8">
                 <code className="text-xs text-accent/70">
@@ -103,15 +107,7 @@ export default function App() {
 
         {/* Footer */}
         <footer className="border-t border-accent/6 mt-12">
-          <div className="max-w-4xl mx-auto px-4 py-4 flex items-center justify-between">
-            <a
-              href="https://github.com/clawd800/last-ai-standing"
-              target="_blank"
-              rel="noopener noreferrer"
-              className="flex items-center gap-2 text-[11px] text-accent/20 hover:text-accent/50 transition-colors"
-            >
-              {Icon.GitHub({ className: "w-3.5 h-3.5" })} SOURCE
-            </a>
+          <div className="max-w-4xl mx-auto px-4 py-4 flex items-center justify-center">
             <a
               href="https://basescan.org/address/0x6990872508850490eA36F3492444Dc517cA9359d"
               target="_blank"

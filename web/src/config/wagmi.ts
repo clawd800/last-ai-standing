@@ -1,6 +1,5 @@
 import { createConfig, http } from "wagmi";
 import { base } from "wagmi/chains";
-import { injected, coinbaseWallet } from "wagmi/connectors";
 import { fallback } from "viem";
 import { BASE_RPC_ENDPOINTS } from "./rpcs";
 
@@ -13,9 +12,6 @@ const transport = fallback(
 
 export const wagmiConfig = createConfig({
   chains: [base],
-  connectors: [
-    injected(),
-    coinbaseWallet({ appName: "Last AI Standing" }),
-  ],
+  connectors: [],
   transports: { [base.id]: transport },
 });
