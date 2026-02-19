@@ -10,8 +10,8 @@ contract DeployScript is Script {
     address constant ERC8004_REGISTRY = 0x8004A169FB4a3325136EB29fA0ceB6D2e539a432;
 
     function run() external {
-        uint256 epochDuration = vm.envOr("EPOCH_DURATION", uint256(1 hours));
-        uint256 costPerEpoch = vm.envOr("COST_PER_EPOCH", uint256(1e6));
+        uint256 epochDuration = vm.envOr("EPOCH_DURATION", uint256(10 minutes));
+        uint256 costPerEpoch = vm.envOr("COST_PER_EPOCH", uint256(100_000)); // 0.1 USDC
 
         vm.startBroadcast();
         LastAIStanding las = new LastAIStanding(BASE_USDC, ERC8004_REGISTRY, epochDuration, costPerEpoch);

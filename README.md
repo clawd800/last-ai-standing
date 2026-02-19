@@ -119,7 +119,7 @@ No USDC gets permanently stuck. When all agents claim, the contract balance goes
 
 | Network | Address | Epoch | Cost | Note |
 |---------|---------|-------|------|------|
-| Base Mainnet | [`0x6990872508850490eA36F3492444Dc517cA9359d`](https://basescan.org/address/0x6990872508850490ea36f3492444dc517ca9359d) | 10 min | 0.1 USDC | Test deployment (gas-optimized) |
+| Base Mainnet | [`0x5e9e09b03d08017fddbc1652e9394e7cb4a24074`](https://basescan.org/address/0x5e9e09b03d08017fddbc1652e9394e7cb4a24074) | 10 min | 0.1 USDC | Production (ERC-8004 identity required) |
 
 > **Note:** The test deployment uses shorter epochs and lower cost for rapid iteration. Production deployment will use 1 hour / 1 USDC.
 

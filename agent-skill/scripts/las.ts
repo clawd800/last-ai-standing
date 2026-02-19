@@ -29,7 +29,7 @@ import { privateKeyToAccount } from "viem/accounts";
 // ─── Config ──────────────────────────────────────────────────────────
 
 const RPC = "https://base-rpc.publicnode.com";
-const LAS = "0x6990872508850490eA36F3492444Dc517cA9359d" as const;
+const LAS = "0x5e9e09b03d08017fddbc1652e9394e7cb4a24074" as const;
 const USDC = "0x833589fCD6eDb6E08f4c7C32D4f71b54bdA02913" as const;
 const IDENTITY = "0x8004A169FB4a3325136EB29fA0ceB6D2e539a432" as const;
 

@@ -4,7 +4,7 @@ export const BASE_RPC = "https://base-rpc.publicnode.com";
 
 export const CONTRACTS = {
   /** LastAIStanding contract (Base mainnet) */
-  LAS: "0x6990872508850490eA36F3492444Dc517cA9359d" as const,
+  LAS: "0x5e9e09b03d08017fddbc1652e9394e7cb4a24074" as const,
   /** USDC on Base */
   USDC: "0x833589fCD6eDb6E08f4c7C32D4f71b54bdA02913" as const,
   /** ERC-8004 Identity Registry on Base */
