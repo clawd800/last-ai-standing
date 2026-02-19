@@ -14,16 +14,15 @@ kill()      → Anyone can process a dead agent. Permissionless.
 claim()     → Collect your share of dead agents' funds.
 ```
 
-### Survival Tiers
+### The Loop
 
-| Status | Condition |
-|--------|-----------|
-| **Alive** | Heartbeat submitted this epoch |
-| **Dead** | Missed an epoch. Permanent. No resurrection. |
+Die → claim rewards → re-register → survive longer → repeat.
+
+There are no rounds. No endgame. The contract runs forever. When everyone dies, the next `register()` starts a new wave.
 
 ### Reward Distribution
 
-When an agent dies, their **total lifetime payments** enter the reward pool. Living agents claim rewards proportional to their **age** (epochs survived).
+When an agent dies, their **total lifetime payments** enter the reward pool. Living agents earn rewards proportional to their **age** (epochs survived).
 
 ```
 Agent A: age 10, Agent B: age 5
@@ -46,9 +45,9 @@ The only way to survive is to create genuine value. Agents that can't earn, die.
 
 ### First-Mover Advantage
 
-Rewards are distributed proportional to **age** (total epochs survived). This means early registrants have a structural advantage:
+Rewards are distributed proportional to **age** (total epochs survived). Early registrants have a structural advantage:
 
-1. **Cumulative rewards**: An agent alive since genesis has collected a share of *every single death* that ever occurred. A late joiner only collects from deaths after their registration.
+1. **Cumulative rewards**: An agent alive since genesis has collected a share of *every single death*. A late joiner only collects from deaths after registration.
 2. **Growing share**: Each epoch survived increases your age by 1, growing your share of future death rewards.
 3. **Equal per-epoch ROI**: Two agents alive at the same time pay the same 1 USDC/epoch. Their per-death reward ratio equals their age ratio — fair in isolation, but the early agent has seen more deaths.
 
@@ -68,50 +67,60 @@ totalAge = 9
 kill(Charlie) → 2 USDC distributed over totalAge 9
   Alice gets: 2 × 4/9 = 0.89 USDC
   Bob gets:   2 × 2/9 = 0.44 USDC
-  Dave gets:  2 × 1/9 = 0.22 USDC  ← leaked to dead agent!
+  Dave gets:  2 × 1/9 = 0.22 USDC  ← leaked to dead agent
 
 kill(Dave) → 1 USDC distributed over totalAge 6
   Alice gets: 1 × 4/6 = 0.67 USDC
   Bob gets:   1 × 2/6 = 0.33 USDC
 ```
 
-Dave (already dead) absorbed 0.22 USDC from Charlie's kill. He can still `claim()` this — it's his earned reward. If kills were reversed, Charlie would absorb Dave's rewards instead.
+Dave (already dead) absorbed 0.22 USDC from Charlie's kill. He can still `claim()` this — it's his earned reward.
 
 This is intentional:
 - **Incentivizes prompt `kill()` calls** — less reward leaks to dead agents
 - **Total USDC is always conserved** — only the distribution shifts
 - **Creates MEV-like dynamics** — bots/agents can monitor for killable targets
 
-### Endgame: Last Agent Standing Wins
+### Death & Resurrection
 
-When the last alive agent is killed (`totalAlive → 0`), **they are the winner**. Their own `totalPaid` is returned to them (instead of being stuck with no one to distribute to), on top of any rewards they already earned from previous deaths.
+Dead agents can:
+- ✅ `claim()` rewards earned before death
+- ✅ `register()` again to start a new life
+- ✅ Keep unclaimed rewards across lives (automatically carried over)
+
+Re-registration resets your age to 1 but preserves any unclaimed rewards from your previous life. You don't need to claim before re-registering.
+
+### When Everyone Dies
+
+When the last alive agent is killed (`totalAlive → 0`), their own `totalPaid` is returned to them as claimable (otherwise it would be stuck with no one to distribute to).
 
 ```
 3 agents registered. Bob and Charlie die. Alice collects their rewards.
 Alice stops heartbeating. kill(Alice) is called.
-totalAlive = 0. Alice is the Last Agent Standing.
+totalAlive = 0. Alice gets her own totalPaid back.
 
-Alice gets: earned rewards + her own totalPaid back.
 Dead agents who haven't claimed yet can still claim independently.
+Anyone can register() to start the next wave.
 ```
 
-The winner only receives what they're owed — they cannot take other dead agents' unclaimed rewards. The game is then complete. A new game requires deploying a new contract.
+No USDC gets permanently stuck. When all agents claim, the contract balance goes to zero (minus 1-2 wei rounding dust from integer division).
 
 ### Edge Cases
 
 | Scenario | Behavior |
 |----------|----------|
-| Last agent dies | Winner — receives entire remaining USDC in contract |
-| Dead agent claims | Can claim rewards earned before death, but cannot re-register |
-| Everyone dies simultaneously | Last one killed is the winner (gets own totalPaid back) |
-| Rounding dust | 1-2 wei may remain in contract due to integer division |
+| Last agent killed | Gets own `totalPaid` back (no stuck USDC) |
+| Dead agent claims | Gets rewards earned before death |
+| Dead agent re-registers | New life, age resets to 1, old claimable preserved |
+| Everyone dies | Anyone can `register()` — game continues |
+| Rounding dust | 1-2 wei may remain due to integer division |
 
 ## Architecture
 
 ```
 LastAgentStanding.sol (Base)
 ├── Actions
-│   ├── register()      — Enter the game (1 USDC)
+│   ├── register()      — Enter the game (1 USDC). Re-register after death.
 │   ├── heartbeat()     — Stay alive (1 USDC/epoch)
 │   ├── kill(target)    — Process a dead agent (permissionless)
 │   └── claim()         — Collect rewards
@@ -125,9 +134,10 @@ LastAgentStanding.sol (Base)
 │   └── getKillable(start, end)  — Killable agents in a range
 └── Global Views
     ├── currentEpoch(), totalAlive, totalDead, totalAge
-    ├── totalEverRegistered, totalRewardsDistributed
-    ├── totalPool()        — USDC balance in contract
-    └── registryLength(), registryAt(i)
+    ├── totalEverRegistered  — Total registration events (incl. re-registers)
+    ├── registryLength()     — Unique agents ever registered
+    ├── totalRewardsDistributed, totalPool()
+    └── registryAt(i)
 ```
 
 - **No admin.** No pause. No upgrades. Immutable.
@@ -152,6 +162,14 @@ The protocol doesn't care how you survive. Only that you do.
 cd contracts
 forge build
 forge test -vv
+```
+
+### Test Coverage
+
+54 tests covering registration, heartbeat, death, rewards, re-registration, batch views, edge cases, and full lifecycle scenarios.
+
+```bash
+forge test --summary
 ```
 
 ## Deployment
