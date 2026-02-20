@@ -1,3 +1,4 @@
+import { useState } from "react";
 import { GameStats } from "@/components/GameStats";
 import { EpochTimer } from "@/components/EpochTimer";
 import { AgentTable } from "@/components/AgentTable";
@@ -40,6 +41,7 @@ const PROTOCOL_STEPS = [
 
 export default function App() {
   const { costPerEpoch, epochDuration } = useGameState();
+  const [showActiveOnly, setShowActiveOnly] = useState(true);
   const costLabel = fmtUsdc(costPerEpoch, true);
   const epochLabel = epochDuration ? fmtDuration(Number(epochDuration)) : "—";
 
@@ -126,8 +128,23 @@ export default function App() {
           </div>
 
           <section>
-            <SectionHeader label="ARENA" />
-            <AgentTable />
+            <SectionHeader label="ARENA">
+              <label className="flex items-center gap-2 cursor-pointer group">
+                <span className="text-[10px] tracking-[0.2em] text-accent/60 group-hover:text-accent transition-colors font-bold">
+                  ACTIVE
+                </span>
+                <div className={`w-8 h-4 rounded-full transition-colors relative border ${showActiveOnly ? "bg-alive/20 border-alive/40" : "bg-transparent border-accent/20"}`}>
+                  <div className={`absolute top-[1px] bottom-[1px] w-[12px] rounded-full transition-all ${showActiveOnly ? "bg-alive left-[18px] shadow-[0_0_8px_var(--color-alive)]" : "bg-accent/40 left-[2px]"}`} />
+                </div>
+                <input 
+                  type="checkbox" 
+                  className="hidden" 
+                  checked={showActiveOnly}
+                  onChange={(e) => setShowActiveOnly(e.target.checked)}
+                />
+              </label>
+            </SectionHeader>
+            <AgentTable showActiveOnly={showActiveOnly} />
           </section>
 
           <section id="enter-the-arena" className="scroll-mt-24">
