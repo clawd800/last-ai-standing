@@ -1,8 +1,8 @@
 export function SectionHeader({ label }: { label: string }) {
   return (
-    <div className="flex items-center gap-3 mb-3">
-      <span className="text-accent/65 text-[10px] tracking-[0.3em]">▸ {label}</span>
-      <div className="flex-1 h-px bg-gradient-to-r from-accent/20 to-transparent" />
+    <div className="flex items-center gap-4 mb-5">
+      <span className="text-accent/80 text-[11px] tracking-[0.4em] font-bold">/// {label}</span>
+      <div className="flex-1 h-px bg-gradient-to-r from-accent/30 via-accent/10 to-transparent shadow-[0_0_10px_rgba(214,222,243,0.1)]" />
     </div>
   );
 }

@@ -39,14 +39,23 @@
 }
 
 .terminal {
-  background: rgba(15, 20, 34, 0.65);
-  border: 1px solid rgba(189, 203, 241, 0.22);
+  background: rgba(15, 20, 34, 0.5);
+  border: 1px solid rgba(189, 203, 241, 0.15);
   position: relative;
-  backdrop-filter: blur(6px);
+  backdrop-filter: blur(12px);
   box-shadow:
-    inset 0 1px 0 rgba(230, 238, 255, 0.08),
-    0 0 15px rgba(100, 140, 220, 0.06),
-    0 12px 28px rgba(5, 8, 16, 0.35);
+    inset 0 1px 0 rgba(230, 238, 255, 0.06),
+    0 4px 20px rgba(5, 8, 16, 0.4),
+    0 0 15px rgba(160, 185, 255, 0.06);
+  transition: all 0.3s ease;
+}
+
+.terminal:hover {
+  border-color: rgba(189, 203, 241, 0.3);
+  box-shadow:
+    inset 0 1px 0 rgba(230, 238, 255, 0.1),
+    0 4px 20px rgba(5, 8, 16, 0.5),
+    0 0 25px rgba(160, 185, 255, 0.15);
 }
 
 .terminal::before {
@@ -54,29 +63,36 @@
   position: absolute;
   inset: 0 0 auto 0;
   height: 1px;
-  background: linear-gradient(90deg, transparent, rgba(206, 220, 255, 0.5), transparent);
+  background: linear-gradient(90deg, transparent, rgba(206, 220, 255, 0.6), transparent);
+  opacity: 0.7;
+  transition: opacity 0.3s ease;
+}
+
+.terminal:hover::before {
+  opacity: 1;
 }
 
 .terminal-accent {
-  background: linear-gradient(160deg, rgba(19, 25, 40, 0.82), rgba(11, 16, 28, 0.82));
-  border: 1px solid rgba(205, 217, 252, 0.3);
+  background: linear-gradient(160deg, rgba(19, 25, 40, 0.85), rgba(11, 16, 28, 0.9));
+  border: 1px solid rgba(205, 217, 252, 0.4);
   box-shadow:
-    0 0 0 1px rgba(255, 255, 255, 0.04),
-    0 0 20px rgba(120, 155, 240, 0.08),
-    0 10px 24px rgba(5, 9, 18, 0.42);
+    inset 0 1px 0 rgba(255, 255, 255, 0.1),
+    0 0 30px rgba(120, 155, 240, 0.15),
+    0 10px 24px rgba(5, 9, 18, 0.6);
 }
 
 .text-glow {
   text-shadow:
-    0 0 8px rgba(199, 213, 255, 0.5),
-    0 0 20px rgba(160, 185, 255, 0.35),
-    0 0 40px rgba(130, 165, 255, 0.15);
+    0 0 10px color-mix(in srgb, currentColor 80%, transparent),
+    0 0 20px color-mix(in srgb, currentColor 60%, transparent),
+    0 0 35px color-mix(in srgb, currentColor 40%, transparent),
+    0 0 60px color-mix(in srgb, currentColor 20%, transparent);
 }
 
 .text-glow-dim {
   text-shadow:
-    0 0 6px rgba(207, 220, 255, 0.35),
-    0 0 16px rgba(170, 195, 255, 0.2);
+    0 0 8px color-mix(in srgb, currentColor 50%, transparent),
+    0 0 16px color-mix(in srgb, currentColor 30%, transparent);
 }
 
 @keyframes blink {
@@ -120,9 +136,9 @@
 
 .progress-glow {
   box-shadow:
-    0 0 6px rgba(201, 213, 255, 0.8),
-    0 0 16px rgba(170, 190, 255, 0.6),
-    0 0 32px rgba(140, 170, 255, 0.3);
+    0 0 8px rgba(255, 106, 140, 0.8),
+    0 0 16px rgba(255, 106, 140, 0.6),
+    0 0 32px rgba(255, 106, 140, 0.4);
 }
 
 .matrix-row:hover {

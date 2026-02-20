@@ -20,8 +20,8 @@ function getStatus(agent: AgentInfo): Status {
 function StatusBadge({ agent }: { agent: AgentInfo }) {
   const s = STATUS[getStatus(agent)];
   return (
-    <span className={`inline-flex items-center gap-1.5 text-[11px] ${s.color} ${s.bold ? "font-bold tracking-wider" : ""}`}>
-      <span className={`w-1.5 h-1.5 rounded-full ${s.dot}`} />
+    <span className={`inline-flex items-center gap-2 text-xs ${s.color} ${s.bold ? "font-bold tracking-widest" : "font-medium tracking-wider"}`}>
+      <span className={`w-2 h-2 rounded-full ${s.dot} shadow-[0_0_8px_currentColor]`} />
       {s.label}
     </span>
   );
@@ -93,14 +93,14 @@ const COLUMNS = ["AGENT", "STATUS", "AGE", "PAID", "REWARDS"] as const;
 
 function AgentRow({ agent, epochDuration, profile }: { agent: AgentInfo; epochDuration: bigint; profile?: AgentProfile }) {
   return (
-    <tr className="border-b border-accent/5 matrix-row transition-colors">
-      <td className="py-2.5 px-3">
+    <tr className="border-b border-accent/10 matrix-row transition-colors group">
+      <td className="py-4 px-5">
         <AgentIdentity agent={agent} profile={profile} />
       </td>
-      <td className="py-2.5 px-3"><StatusBadge agent={agent} /></td>
-      <td className="py-2.5 px-3 font-mono text-[11px] text-accent/60">{fmtAge(agent.age, epochDuration)}</td>
-      <td className="py-2.5 px-3 font-mono text-[11px] text-accent/40">{fmtUsdc(agent.totalPaid)}</td>
-      <td className="py-2.5 px-3 font-mono text-[11px] text-accent/60">{fmtUsdc(agent.pendingReward)}</td>
+      <td className="py-4 px-5"><StatusBadge agent={agent} /></td>
+      <td className="py-4 px-5 font-mono text-xs text-accent/70">{fmtAge(agent.age, epochDuration)}</td>
+      <td className="py-4 px-5 font-mono text-xs text-accent/60">{fmtUsdc(agent.totalPaid)}</td>
+      <td className="py-4 px-5 font-mono text-xs text-accent/90 font-semibold">{fmtUsdc(agent.pendingReward)}</td>
     </tr>
   );
 }
@@ -117,18 +117,18 @@ export function AgentTable() {
 
   if (stateLoading || listLoading) {
     return (
-      <div className="terminal rounded p-6">
-        <div className="text-accent/20 text-xs font-mono animate-pulse">Loading arena data...</div>
+      <div className="terminal rounded p-12 text-center">
+        <div className="text-accent/30 text-sm font-mono animate-pulse tracking-widest">LOADING ARENA DATA...</div>
       </div>
     );
   }
 
   if (agents.length === 0) {
     return (
-      <div className="terminal rounded p-10 text-center">
-        <div className="text-accent/10 text-3xl mb-3 font-mono">[ ]</div>
-        <p className="text-accent/30 text-xs">NO AGENTS IN THE ARENA</p>
-        <p className="text-accent/15 text-[10px] mt-1">Be the first to register</p>
+      <div className="terminal rounded p-16 text-center">
+        <div className="text-accent/20 text-4xl mb-4 font-mono">[ ]</div>
+        <p className="text-accent/50 text-sm tracking-widest font-bold">NO AGENTS IN THE ARENA</p>
+        <p className="text-accent/30 text-xs mt-2">Be the first to register</p>
       </div>
     );
   }
@@ -142,13 +142,13 @@ export function AgentTable() {
   });
 
   return (
-    <div className="terminal rounded overflow-hidden">
+    <div className="terminal rounded overflow-hidden shadow-xl">
       <div className="overflow-x-auto">
         <table className="w-full text-left">
           <thead>
-            <tr className="border-b border-accent/10">
+            <tr className="border-b border-accent/15 bg-surface-raised/20">
               {COLUMNS.map((h) => (
-                <th key={h} className="py-2.5 px-3 text-[9px] text-accent/25 uppercase tracking-[0.2em] font-normal">
+                <th key={h} className="py-4 px-5 text-[10px] text-accent/50 uppercase tracking-[0.25em] font-bold">
                   {h}
                 </th>
               ))}
