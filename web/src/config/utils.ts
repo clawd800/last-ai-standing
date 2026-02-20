@@ -21,7 +21,7 @@ export function fmtAge(epochs: bigint, epochDuration: bigint): string {
 
 export function fmtUsdc(value: bigint | undefined, unit?: boolean): string {
   if (value === undefined) return "—";
-  const v = formatUnits(value, 6);
+  const v = Number(formatUnits(value, 6)).toFixed(2);
   return unit ? `${v} USDC` : v;
 }
 
