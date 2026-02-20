@@ -11,6 +11,7 @@ export interface AgentInfo {
   killable: boolean;
   age: bigint;
   totalPaid: bigint;
+  totalClaimed: bigint;
   pendingReward: bigint;
 }
 

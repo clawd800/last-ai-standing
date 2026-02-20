@@ -181,8 +181,8 @@ program
     const agents = await fetchAllAgents(regLen);
 
     console.log(`\n  ARENA — ${agents.length} agent(s)\n`);
-    console.log(`  ${"AGENT".padEnd(14)} ${"ID".padEnd(8)} ${"STATUS".padEnd(10)} ${"AGE".padEnd(8)} ${"PAID".padEnd(12)} REWARDS`);
-    console.log(`  ${"─".repeat(14)} ${"─".repeat(8)} ${"─".repeat(10)} ${"─".repeat(8)} ${"─".repeat(12)} ${"─".repeat(12)}`);
+    console.log(`  ${"AGENT".padEnd(14)} ${"ID".padEnd(8)} ${"STATUS".padEnd(10)} ${"AGE".padEnd(8)} ${"PAID".padEnd(12)} ${"CLAIMED".padEnd(12)} REWARDS`);
+    console.log(`  ${"─".repeat(14)} ${"─".repeat(8)} ${"─".repeat(10)} ${"─".repeat(8)} ${"─".repeat(12)} ${"─".repeat(12)} ${"─".repeat(12)}`);
 
     const sorted = [...agents].sort((a, b) => {
       if (a.alive !== b.alive) return a.alive ? -1 : 1;
@@ -193,7 +193,7 @@ program
     for (const a of sorted) {
       const status = a.killable ? "KILLABLE" : a.alive ? "ALIVE" : "DEAD";
       console.log(
-        `  ${shortAddr(a.addr).padEnd(14)} ${String(a.agentId).padEnd(8)} ${status.padEnd(10)} ${fmtAge(a.age, epochDur).padEnd(8)} ${(fmtUsdc(a.totalPaid) + " USDC").padEnd(12)} ${fmtUsdc(a.pendingReward)} USDC`
+        `  ${shortAddr(a.addr).padEnd(14)} ${String(a.agentId).padEnd(8)} ${status.padEnd(10)} ${fmtAge(a.age, epochDur).padEnd(8)} ${(fmtUsdc(a.totalPaid) + " USDC").padEnd(12)} ${(fmtUsdc(a.totalClaimed) + " USDC").padEnd(12)} ${fmtUsdc(a.pendingReward)} USDC`
       );
     }
     console.log();
@@ -221,7 +221,7 @@ program
         pub.readContract({ ...c, functionName: "COST_PER_EPOCH" }),
       ]);
 
-    const [, , , , , , agentId] = agentData;
+    const [, , , , , , , agentId] = agentData;
     const registered = age > 0n;
     const needsApproval = allowance < cost;
 

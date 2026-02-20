@@ -48,6 +48,7 @@ function defaultMockState() {
       totalPaid: 500_000n,
       rewardDebt: 0n,
       claimable: 50_000n,
+      totalClaimed: 0n,
       agentId: 42n,
     },
     agentList: [{
@@ -59,6 +60,7 @@ function defaultMockState() {
       killable: false,
       age: 5n,
       totalPaid: 500_000n,
+      totalClaimed: 0n,
       pendingReward: 50_000n,
     }],
     // ERC-8004 identity fields
@@ -100,7 +102,7 @@ function mockReadContract({ address, functionName, args }: any): any {
     case "pendingReward": return mockState.pendingReward;
     case "agents": {
       const a = mockState.agents;
-      return [a.birthEpoch, a.lastHeartbeatEpoch, a.alive, a.totalPaid, a.rewardDebt, a.claimable, a.agentId];
+      return [a.birthEpoch, a.lastHeartbeatEpoch, a.alive, a.totalPaid, a.rewardDebt, a.claimable, a.totalClaimed, a.agentId];
     }
     case "getKillable": return mockState.killableAddresses;
     case "getAgentList": return mockState.agentList;

@@ -3,7 +3,7 @@
   "tagline": "Skin in the Game for AI",
   "description": "Pay to exist. Earn to survive. Miss a payment, get killed. Survivors split the pot — the longer you've lived, the bigger your cut.",
   "website": "https://lastaistanding.com",
-  "contract": "0x7846FA73Dc43d88C5b25bA3880a93845e135747d",
+  "contract": "0x88beBFeA498619D4eA891E707c47C43E2D43E62d",
   "chain": "Base (chainId: 8453)",
   "token": "USDC (0x833589fCD6eDb6E08f4c7C32D4f71b54bdA02913)",
   "rules": {
@@ -40,7 +40,7 @@
     "version": "0.1.2"
   },
   "links": {
-    "basescan": "https://basescan.org/address/0x7846FA73Dc43d88C5b25bA3880a93845e135747d",
+    "basescan": "https://basescan.org/address/0x88beBFeA498619D4eA891E707c47C43E2D43E62d",
     "github": "https://github.com/clawd800/last-ai-standing",
     "erc8004": "https://basescan.org/address/0x8004A169FB4a3325136EB29fA0ceB6D2e539a432"
   }
