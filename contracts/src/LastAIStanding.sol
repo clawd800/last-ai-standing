@@ -86,18 +86,17 @@ contract LastAIStanding is ReentrancyGuard {
     /// @dev Packed into 4 storage slots.
     ///      Slot 0: birthEpoch(64) + lastHeartbeatEpoch(64) + alive(8) + totalPaid(96) = 232 bits
     ///      Slot 1: rewardDebt(256)
-    ///      Slot 2: claimable(256)
+    ///      Slot 2: claimable(128) + totalClaimed(128) = 256 bits
     ///      Slot 3: agentId(256) — ERC-8004 identity, set once on first register
-    ///      Slot 4: totalClaimed(256) — cumulative USDC claimed by this agent
     struct Agent {
         uint64 birthEpoch;
         uint64 lastHeartbeatEpoch;
         bool alive;
         uint96 totalPaid;
         uint256 rewardDebt;
-        uint256 claimable;
+        uint128 claimable;
+        uint128 totalClaimed;
         uint256 agentId;
-        uint256 totalClaimed;
     }
 
     mapping(address => Agent) public agents;
@@ -370,7 +369,8 @@ contract LastAIStanding is ReentrancyGuard {
         if (!isNew && a.agentId != agentId) revert AgentIdTaken();
 
         uint256 epoch = currentEpoch();
-        uint256 previousClaimable = a.claimable;
+        uint128 previousClaimable = a.claimable;
+        uint128 previousTotalClaimed = a.totalClaimed;
         uint256 _acc = accRewardPerAge;
 
         // Split payment: treasury takes 10%, pool gets 90%
@@ -379,7 +379,6 @@ contract LastAIStanding is ReentrancyGuard {
         treasuryBalance += treasuryFee;
 
         // Effects first (CEI pattern)
-        uint256 previousTotalClaimed = a.totalClaimed;
         agents[msg.sender] = Agent({
             birthEpoch: uint64(epoch),
             lastHeartbeatEpoch: uint64(epoch),
@@ -436,7 +435,7 @@ contract LastAIStanding is ReentrancyGuard {
 
         // Effects: update all state before transfer
         unchecked {
-            a.claimable += pending;
+            a.claimable += uint128(pending);
             a.totalPaid += uint96(poolAmount);
         }
         a.lastHeartbeatEpoch = uint64(epoch);
@@ -475,7 +474,7 @@ contract LastAIStanding is ReentrancyGuard {
         // Settle dead agent's pending rewards (they can still claim these)
         uint256 _acc = accRewardPerAge;
         uint256 pending = (age * _acc / PRECISION) - a.rewardDebt;
-        unchecked { a.claimable += pending; }
+        unchecked { a.claimable += uint128(pending); }
         a.rewardDebt = 0;
 
         // Mark dead
@@ -492,7 +491,7 @@ contract LastAIStanding is ReentrancyGuard {
         if (_totalAge > 0) {
             accRewardPerAge = _acc + (reward * PRECISION) / _totalAge;
         } else {
-            unchecked { a.claimable += reward; }
+            unchecked { a.claimable += uint128(reward); }
         }
         unchecked { totalRewardsDistributed += reward; }
 
@@ -539,7 +538,7 @@ contract LastAIStanding is ReentrancyGuard {
         // Effects before interaction
         a.claimable = 0;
         if (payout == 0) revert NothingToClaim();
-        unchecked { a.totalClaimed += payout; }
+        unchecked { a.totalClaimed += uint128(payout); }
 
         emit Claimed(msg.sender, payout);
 
