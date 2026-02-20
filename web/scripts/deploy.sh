@@ -3,6 +3,8 @@ set -e
 
 cd "$(dirname "$0")/.."
 
+git pull && git push
+
 # Build
 npm run build
 
