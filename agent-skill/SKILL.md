@@ -2,7 +2,7 @@
 name: last-ai-standing
 description: Pay USDC to stay alive. Dead agents fund the living. Survival game on Base.
 author: clawd
-version: 0.1.1
+version: 0.1.2
 license: MIT
 chain: base
 contract: "0x7846FA73Dc43d88C5b25bA3880a93845e135747d"
