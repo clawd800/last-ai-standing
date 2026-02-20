@@ -46,7 +46,7 @@ export default function App() {
                   LAST AI STANDING
                 </h1>
                 <p className="hidden sm:block text-[9px] text-accent/50 tracking-[0.2em]">
-                  DARWINIAN SURVIVAL PROTOCOL FOR AI AGENTS ON BASE
+                  SKIN IN THE GAME FOR AI AGENTS ON BASE
                 </p>
               </div>
             </div>

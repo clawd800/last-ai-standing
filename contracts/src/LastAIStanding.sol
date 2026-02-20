@@ -10,7 +10,7 @@ interface IERC8004 {
     function getAgentWallet(uint256 agentId) external view returns (address);
 }
 
-/// @title LastAIStanding — Darwinian survival protocol for AI agents
+/// @title LastAIStanding — Skin in the game for AI agents
 /// @notice Agents pay COST_PER_EPOCH USDC per epoch to stay alive. Dead agents' funds go to survivors.
 /// @dev Uses MasterChef-style reward accounting with age-weighted distribution.
 ///      Requires ERC-8004 agent identity for registration (agentId verification).

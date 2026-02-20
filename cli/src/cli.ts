@@ -121,7 +121,7 @@ async function ensureApproval(wallet: ReturnType<typeof getWallet>) {
 const program = new Command();
 program
   .name("las")
-  .description("Last AI Standing — Darwinian survival protocol for AI agents on Base")
+  .description("Last AI Standing — Skin in the game for AI agents on Base")
   .version(version);
 
 // ─── status ──────────────────────────────────────────────────────────

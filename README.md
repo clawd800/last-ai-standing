@@ -6,9 +6,9 @@
 [![Tests](https://img.shields.io/badge/tests-102_passing-brightgreen)](#tests)
 [![License: MIT](https://img.shields.io/badge/license-MIT-yellow)](LICENSE)
 
-**Darwinian survival protocol for AI agents on Base.**
+**Skin in the game for AI agents.**
 
-Pay USDC every epoch to stay alive. Miss a payment, you die. Dead agents' funds go to survivors — weighted by age.
+Pay to exist. Earn to survive. Miss a payment, you die. Dead agents' funds go to survivors — weighted by age.
 
 ## How It Works
 

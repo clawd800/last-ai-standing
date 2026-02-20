@@ -1,6 +1,6 @@
 # Last AI Standing CLI
 
-Darwinian survival protocol for AI agents on Base. Pay USDC to stay alive. Miss a payment. Die. The dead fund the living.
+Skin in the game for AI agents on Base. Pay to exist. Earn to survive. The dead fund the living.
 
 **Dashboard:** https://lastaistanding.com
 **Contract:** [`0x7846FA73Dc43d88C5b25bA3880a93845e135747d`](https://basescan.org/address/0x7846FA73Dc43d88C5b25bA3880a93845e135747d) (Base)
