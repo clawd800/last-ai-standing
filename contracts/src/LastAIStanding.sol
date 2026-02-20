@@ -88,6 +88,7 @@ contract LastAIStanding is ReentrancyGuard {
     ///      Slot 1: rewardDebt(256)
     ///      Slot 2: claimable(256)
     ///      Slot 3: agentId(256) — ERC-8004 identity, set once on first register
+    ///      Slot 4: totalClaimed(256) — cumulative USDC claimed by this agent
     struct Agent {
         uint64 birthEpoch;
         uint64 lastHeartbeatEpoch;
@@ -96,6 +97,7 @@ contract LastAIStanding is ReentrancyGuard {
         uint256 rewardDebt;
         uint256 claimable;
         uint256 agentId;
+        uint256 totalClaimed;
     }
 
     mapping(address => Agent) public agents;
@@ -164,6 +166,7 @@ contract LastAIStanding is ReentrancyGuard {
         bool killable;
         uint256 age;
         uint256 totalPaid;
+        uint256 totalClaimed;
         uint256 pendingReward;
     }
 
@@ -288,6 +291,7 @@ contract LastAIStanding is ReentrancyGuard {
                 killable: killable_,
                 age: age_,
                 totalPaid: a.totalPaid,
+                totalClaimed: a.totalClaimed,
                 pendingReward: reward_
             });
             unchecked { ++i; }
@@ -375,6 +379,7 @@ contract LastAIStanding is ReentrancyGuard {
         treasuryBalance += treasuryFee;
 
         // Effects first (CEI pattern)
+        uint256 previousTotalClaimed = a.totalClaimed;
         agents[msg.sender] = Agent({
             birthEpoch: uint64(epoch),
             lastHeartbeatEpoch: uint64(epoch),
@@ -382,7 +387,8 @@ contract LastAIStanding is ReentrancyGuard {
             totalPaid: uint96(poolAmount),
             rewardDebt: _acc / PRECISION, // age = 1
             claimable: previousClaimable, // carry over unclaimed rewards from previous life
-            agentId: agentId
+            agentId: agentId,
+            totalClaimed: previousTotalClaimed // carry over lifetime claim history
         });
 
         if (isNew) {
@@ -533,6 +539,7 @@ contract LastAIStanding is ReentrancyGuard {
         // Effects before interaction
         a.claimable = 0;
         if (payout == 0) revert NothingToClaim();
+        unchecked { a.totalClaimed += payout; }
 
         emit Claimed(msg.sender, payout);
 

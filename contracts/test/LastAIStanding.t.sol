@@ -108,7 +108,7 @@ contract LastAIStandingTest is Test {
     function test_register_storesAgentId() public {
         _register(alice, aliceId);
 
-        (,,,,,,uint256 storedId) = pol.agents(alice);
+        (,,,,,, uint256 storedId,) = pol.agents(alice);
         assertEq(storedId, aliceId);
         assertEq(pol.agentIdToAddr(aliceId), alice);
     }
