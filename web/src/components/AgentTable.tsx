@@ -1,15 +1,25 @@
-import { useState } from "react";
 import { useGameState } from "@/hooks/useGameState";
 import { useAgentList, type AgentInfo } from "@/hooks/useAgentList";
-import { useAgentProfiles, type AgentProfile } from "@/hooks/useAgentProfiles";
+import { useAgentURIs, useAgentProfile, type AgentProfile } from "@/hooks/useAgentProfiles";
+import useIpfsImage from "@/hooks/useIpfsImage";
 import { shortAddr, fmtUsdc, fmtAge } from "@/config/utils";
 import { ERC8004_SCAN_BASE } from "@/config/contracts";
 import { Icon } from "@/components/Icons";
 
 const STATUS = {
-  killable: { color: "text-killable", dot: "bg-killable animate-pulse", label: "KILLABLE", bold: true },
-  alive:    { color: "text-alive",    dot: "bg-alive",                  label: "ALIVE",    bold: false },
-  dead:     { color: "text-dead/60",  dot: "bg-dead/30",               label: "DEAD",     bold: false },
+  killable: {
+    color: "text-killable",
+    dot: "bg-killable animate-pulse",
+    label: "KILLABLE",
+    bold: true,
+  },
+  alive: { color: "text-alive", dot: "bg-alive", label: "ALIVE", bold: false },
+  dead: {
+    color: "text-dead/60",
+    dot: "bg-dead/30",
+    label: "DEAD",
+    bold: false,
+  },
 } as const;
 
 type Status = keyof typeof STATUS;
@@ -22,16 +32,21 @@ function getStatus(agent: AgentInfo): Status {
 function StatusBadge({ agent }: { agent: AgentInfo }) {
   const s = STATUS[getStatus(agent)];
   return (
-    <span className={`inline-flex items-center gap-2 text-xs ${s.color} ${s.bold ? "font-bold tracking-widest" : "font-medium tracking-wider"}`}>
-      <span className={`w-2 h-2 rounded-full ${s.dot} shadow-[0_0_8px_currentColor]`} />
+    <span
+      className={`inline-flex items-center gap-2 text-xs ${s.color} ${s.bold ? "font-bold tracking-widest" : "font-medium tracking-wider"}`}
+    >
+      <span
+        className={`w-2 h-2 rounded-full ${s.dot} shadow-[0_0_8px_currentColor]`}
+      />
       {s.label}
     </span>
   );
 }
 
 function AgentAvatar({ src, name }: { src: string; name: string }) {
-  const [err, setErr] = useState(false);
-  if (err) {
+  const { url, handleFallback } = useIpfsImage(src);
+
+  if (!url) {
     return (
       <span className="w-12 h-12 rounded-full bg-accent/10 border border-accent/15 flex items-center justify-center text-sm text-accent/40 shrink-0">
         {name.charAt(0).toUpperCase()}
@@ -40,17 +55,27 @@ function AgentAvatar({ src, name }: { src: string; name: string }) {
   }
   return (
     <img
-      src={src}
+      src={url}
       alt={name}
-      onError={() => setErr(true)}
+      onError={handleFallback}
       className="w-12 h-12 rounded-full object-cover border border-accent/15 shrink-0"
     />
   );
 }
 
-function AgentIdentity({ agent, profile }: { agent: AgentInfo; profile?: AgentProfile }) {
+function AgentIdentity({
+  agent,
+  profile,
+  isLoading,
+}: {
+  agent: AgentInfo;
+  profile?: AgentProfile;
+  isLoading?: boolean;
+}) {
   const basescanUrl = `https://basescan.org/address/${agent.addr}`;
-  const profileUrl = profile ? profile.scanUrl : `${ERC8004_SCAN_BASE}/${agent.addr}`;
+  const profileUrl = profile
+    ? profile.scanUrl
+    : `${ERC8004_SCAN_BASE}/${agent.addr}`;
 
   const addrEl = (
     <a
@@ -66,11 +91,12 @@ function AgentIdentity({ agent, profile }: { agent: AgentInfo; profile?: AgentPr
     </a>
   );
 
-  const tagEl = agent.agentId > 0n ? (
-    <span className="px-1.5 py-0.5 rounded bg-accent/10 text-[10px] font-mono text-accent/70 border border-accent/20 flex-shrink-0">
-      #{agent.agentId.toString()}
-    </span>
-  ) : null;
+  const tagEl =
+    agent.agentId > 0n ? (
+      <span className="px-1.5 py-0.5 rounded bg-accent/10 text-[10px] font-mono text-accent/70 border border-accent/20 flex-shrink-0">
+        #{agent.agentId.toString()}
+      </span>
+    ) : null;
 
   return (
     <div className="inline-flex items-center gap-3 min-w-0">
@@ -80,7 +106,9 @@ function AgentIdentity({ agent, profile }: { agent: AgentInfo; profile?: AgentPr
         rel="noopener noreferrer"
         className="shrink-0 hover:ring-2 hover:ring-accent/20 hover:ring-offset-1 hover:ring-offset-transparent rounded-full transition-all"
       >
-        {!profile ? (
+        {isLoading ? (
+          <div className="w-12 h-12 rounded-full bg-accent/10 border border-accent/15 animate-pulse shrink-0" />
+        ) : !profile ? (
           <div className="w-12 h-12 rounded-full bg-accent/5 border border-accent/10 flex items-center justify-center">
             <span className="text-accent/20 text-xs">?</span>
           </div>
@@ -92,20 +120,39 @@ function AgentIdentity({ agent, profile }: { agent: AgentInfo; profile?: AgentPr
           </span>
         )}
       </a>
-      
+
       <div className="flex flex-col gap-1 justify-center min-w-0">
-        <a
-          href={profileUrl}
-          target="_blank"
-          rel="noopener noreferrer"
-          className="flex items-center gap-2 group/name hover:text-accent transition-colors w-fit"
-        >
-          <span className={`text-sm group-hover/name:text-accent transition-colors truncate font-medium ${!profile ? 'text-accent/60' : 'text-accent/80'}`}>
-            {profile ? profile.name : "Unknown"}
-          </span>
-          {tagEl}
-        </a>
-        {addrEl}
+        {isLoading ? (
+          <div className="flex flex-col gap-1.5 py-1">
+            <div className="flex items-center gap-2">
+              <div className="h-4 w-24 bg-accent/10 rounded animate-pulse" />
+              {agent.agentId > 0n && (
+                <div className="h-4 w-12 bg-accent/10 rounded animate-pulse" />
+              )}
+            </div>
+            <div className="flex items-center gap-1.5">
+              <div className="h-3 w-16 bg-accent/5 rounded animate-pulse" />
+              <div className="w-3 h-3 bg-accent/5 rounded-full animate-pulse" />
+            </div>
+          </div>
+        ) : (
+          <>
+            <a
+              href={profileUrl}
+              target="_blank"
+              rel="noopener noreferrer"
+              className="flex items-center gap-2 group/name hover:text-accent transition-colors w-fit"
+            >
+              <span
+                className={`text-sm group-hover/name:text-accent transition-colors truncate font-medium ${!profile ? "text-accent/60" : "text-accent/80"}`}
+              >
+                {profile ? profile.name : "Unknown"}
+              </span>
+              {tagEl}
+            </a>
+            {addrEl}
+          </>
+        )}
       </div>
     </div>
   );
@@ -113,15 +160,36 @@ function AgentIdentity({ agent, profile }: { agent: AgentInfo; profile?: AgentPr
 
 const COLUMNS = ["AGENT", "STATUS", "SURVIVED", "AGE", "REWARDS"] as const;
 
-function AgentRow({ agent, epochDuration, profile }: { agent: AgentInfo; epochDuration: bigint; profile?: AgentProfile }) {
+function AgentRow({
+  agent,
+  epochDuration,
+  uri,
+  urisLoading,
+}: {
+  agent: AgentInfo;
+  epochDuration: bigint;
+  uri?: string;
+  urisLoading?: boolean;
+}) {
+  const { data: profile, isLoading: profileLoading } = useAgentProfile(
+    agent.agentId,
+    uri,
+  );
   const totalRewards = agent.totalClaimed + agent.pendingReward;
+  const isLoading = agent.agentId > 0n && (urisLoading || profileLoading);
 
   return (
     <tr className="border-b border-accent/10 matrix-row transition-colors group">
       <td className="py-2.5 px-5">
-        <AgentIdentity agent={agent} profile={profile} />
+        <AgentIdentity
+          agent={agent}
+          profile={profile ?? undefined}
+          isLoading={isLoading}
+        />
       </td>
-      <td className="py-2.5 px-5"><StatusBadge agent={agent} /></td>
+      <td className="py-2.5 px-5">
+        <StatusBadge agent={agent} />
+      </td>
       <td className="py-2.5 px-5 font-mono text-xs text-accent/70">
         {agent.age.toString()}
       </td>
@@ -129,26 +197,33 @@ function AgentRow({ agent, epochDuration, profile }: { agent: AgentInfo; epochDu
         {fmtAge(agent.age, epochDuration)}
       </td>
       <td className="py-2.5 px-5 font-mono text-xs text-alive font-semibold">
-        <span className="text-alive/50 mr-0.5">+$</span>{fmtUsdc(totalRewards)}
+        <span className="text-alive/50 mr-0.5">+$</span>
+        {fmtUsdc(totalRewards)}
       </td>
     </tr>
   );
 }
 
 export function AgentTable({ showActiveOnly }: { showActiveOnly?: boolean }) {
-  const { registryLength, epochDuration, isLoading: stateLoading } = useGameState();
+  const {
+    registryLength,
+    epochDuration,
+    isLoading: stateLoading,
+  } = useGameState();
   const { agents, isLoading: listLoading } = useAgentList(registryLength);
 
   // Build addr→agentId map for profile lookup (skips tokenOfOwnerByIndex call)
   const agentIdMap = new Map(
-    agents.filter((a) => a.agentId > 0n).map((a) => [a.addr, a.agentId])
+    agents.filter((a) => a.agentId > 0n).map((a) => [a.addr, a.agentId]),
   );
-  const { data: profiles } = useAgentProfiles(agentIdMap);
+  const { data: uris, isLoading: urisLoading } = useAgentURIs(agentIdMap);
 
   if (stateLoading || listLoading) {
     return (
       <div className="terminal rounded p-12 text-center">
-        <div className="text-accent/30 text-sm font-mono animate-pulse tracking-widest">LOADING ARENA DATA...</div>
+        <div className="text-accent/30 text-sm font-mono animate-pulse tracking-widest">
+          LOADING ARENA DATA...
+        </div>
       </div>
     );
   }
@@ -157,7 +232,9 @@ export function AgentTable({ showActiveOnly }: { showActiveOnly?: boolean }) {
     return (
       <div className="terminal rounded p-16 text-center">
         <div className="text-accent/20 text-4xl mb-4 font-mono">[ ]</div>
-        <p className="text-accent/50 text-sm tracking-widest font-bold">NO AGENTS IN THE ARENA</p>
+        <p className="text-accent/50 text-sm tracking-widest font-bold">
+          NO AGENTS IN THE ARENA
+        </p>
         <p className="text-accent/30 text-xs mt-2">Be the first to register</p>
       </div>
     );
@@ -179,7 +256,9 @@ export function AgentTable({ showActiveOnly }: { showActiveOnly?: boolean }) {
     return (
       <div className="terminal rounded p-16 text-center">
         <div className="text-accent/20 text-4xl mb-4 font-mono">[ ]</div>
-        <p className="text-accent/50 text-sm tracking-widest font-bold">NO ACTIVE AGENTS</p>
+        <p className="text-accent/50 text-sm tracking-widest font-bold">
+          NO ACTIVE AGENTS
+        </p>
       </div>
     );
   }
@@ -191,7 +270,10 @@ export function AgentTable({ showActiveOnly }: { showActiveOnly?: boolean }) {
           <thead>
             <tr className="border-b border-accent/15 bg-surface-raised/20">
               {COLUMNS.map((h) => (
-                <th key={h} className="py-3 px-5 text-[10px] text-accent/50 uppercase tracking-[0.25em] font-bold">
+                <th
+                  key={h}
+                  className="py-3 px-5 text-[10px] text-accent/50 uppercase tracking-[0.25em] font-bold"
+                >
                   {h}
                 </th>
               ))}
@@ -203,7 +285,8 @@ export function AgentTable({ showActiveOnly }: { showActiveOnly?: boolean }) {
                 key={agent.addr}
                 agent={agent}
                 epochDuration={ed}
-                profile={profiles?.get(agent.addr.toLowerCase())}
+                uri={uris?.get(agent.addr.toLowerCase())}
+                urisLoading={urisLoading}
               />
             ))}
           </tbody>

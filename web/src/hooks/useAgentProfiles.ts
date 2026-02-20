@@ -1,6 +1,7 @@
 import { useQuery } from "@tanstack/react-query";
 import { publicClient } from "@/config/client";
 import { CONTRACTS, IDENTITY_ABI, ERC8004_SCAN_BASE } from "@/config/contracts";
+import { FALLBACK_IPFS_GATEWAYS, getNextIpfsUrl } from "./useIpfsImage";
 
 export interface AgentProfile {
   tokenId: bigint;
@@ -10,7 +11,7 @@ export interface AgentProfile {
   scanUrl: string;
 }
 
-const IPFS_GATEWAY = "https://ipfs.io/ipfs/";
+const IPFS_GATEWAY = `https://${FALLBACK_IPFS_GATEWAYS[0]}/ipfs/`;
 
 function resolveUri(uri: string): string {
   if (uri.startsWith("ipfs://")) return IPFS_GATEWAY + uri.slice(7);
@@ -32,46 +33,63 @@ function parseDataUri(uri: string): unknown | null {
   }
 }
 
-async function fetchMetadata(uri: string): Promise<{ name?: string; image?: string; description?: string } | null> {
+async function fetchMetadata(
+  uri: string,
+): Promise<{ name?: string; image?: string; description?: string } | null> {
   const inline = parseDataUri(uri);
-  if (inline) return inline as { name?: string; image?: string; description?: string };
-  try {
-    const targetUrl = resolveUri(uri);
+  if (inline)
+    return inline as { name?: string; image?: string; description?: string };
+
+  let targetUrl = resolveUri(uri);
+  let currentGatewayIndex = 0;
+  const isIpfs = uri.startsWith("ipfs://");
+
+  while (true) {
     try {
-      const res = await fetch(targetUrl, { signal: AbortSignal.timeout(8_000) });
-      if (res.ok) {
-        return await res.json();
+      try {
+        const res = await fetch(targetUrl, {
+          signal: AbortSignal.timeout(isIpfs ? 2_000 : 5_000),
+        });
+        if (res.ok) {
+          return await res.json();
+        }
+        throw new Error(`HTTP ${res.status}`);
+      } catch (err) {
+        if (isIpfs) throw err; // Skip allorigins for IPFS since gateways typically handle CORS
+
+        // Fallback for CORS or other fetch errors using allorigins.win
+        const fallbackUrl = `https://api.allorigins.win/get?url=${encodeURIComponent(targetUrl)}`;
+        const fallbackRes = await fetch(fallbackUrl, {
+          signal: AbortSignal.timeout(5_000),
+        });
+        if (!fallbackRes.ok) throw err;
+        const data = await fallbackRes.json();
+        if (!data.contents) throw err;
+        return JSON.parse(data.contents);
       }
-      throw new Error(`HTTP ${res.status}`);
-    } catch (err) {
-      // Fallback for CORS or other fetch errors using allorigins.win
-      const fallbackUrl = `https://api.allorigins.win/get?url=${encodeURIComponent(targetUrl)}`;
-      const fallbackRes = await fetch(fallbackUrl, { signal: AbortSignal.timeout(8_000) });
-      if (!fallbackRes.ok) return null;
-      const data = await fallbackRes.json();
-      if (!data.contents) return null;
-      return JSON.parse(data.contents);
+    } catch {
+      if (!isIpfs) return null;
+      const nextUrl = getNextIpfsUrl(targetUrl, currentGatewayIndex);
+      if (!nextUrl) return null;
+      targetUrl = nextUrl;
+      currentGatewayIndex++;
     }
-  } catch {
-    return null;
   }
 }
 
 const registry = { address: CONTRACTS.IDENTITY, abi: IDENTITY_ABI } as const;
 
 /**
- * Fetch agent profiles from ERC-8004 metadata.
- * Accepts agentId map directly (from getAgentList) to skip tokenOfOwnerByIndex calls.
+ * Fetch token URIs for agents using multicall.
  */
-export function useAgentProfiles(agentIdMap: Map<string, bigint>) {
+export function useAgentURIs(agentIdMap: Map<string, bigint>) {
   const entries = [...agentIdMap.entries()]; // [addr, agentId][]
 
   return useQuery({
-    queryKey: ["agentProfiles", entries.map(([a, id]) => `${a}:${id}`).join(",")],
-    queryFn: async (): Promise<Map<string, AgentProfile>> => {
+    queryKey: ["agentURIs", entries.map(([a, id]) => `${a}:${id}`).join(",")],
+    queryFn: async (): Promise<Map<string, string>> => {
       if (entries.length === 0) return new Map();
 
-      // agentId = tokenId in ERC-8004, use directly for tokenURI
       const batchSize = 100;
       const uriResults: any[] = [];
       for (let i = 0; i < entries.length; i += batchSize) {
@@ -87,28 +105,40 @@ export function useAgentProfiles(agentIdMap: Map<string, bigint>) {
         uriResults.push(...batchResults);
       }
 
-      const profiles = new Map<string, AgentProfile>();
-      const metaFetches = entries.map(async ([addr, agentId], i) => {
-        const uriResult = uriResults[i];
-        if (uriResult.status !== "success" || !uriResult.result) return;
-
-        const meta = await fetchMetadata(uriResult.result as string);
-        if (!meta?.name) return;
-
-        profiles.set(addr.toLowerCase(), {
-          tokenId: agentId,
-          name: meta.name,
-          image: meta.image ? resolveUri(meta.image) : null,
-          description: meta.description ?? null,
-          scanUrl: `${ERC8004_SCAN_BASE}/${agentId}`,
-        });
+      const uris = new Map<string, string>();
+      entries.forEach(([addr], i) => {
+        const res = uriResults[i];
+        if (res.status === "success" && res.result) {
+          uris.set(addr.toLowerCase(), res.result as string);
+        }
       });
-
-      await Promise.allSettled(metaFetches);
-      return profiles;
+      return uris;
     },
     enabled: entries.length > 0,
-    staleTime: 60_000,
-    refetchInterval: 60_000,
+    staleTime: Infinity, // URIs rarely change
+  });
+}
+
+/**
+ * Fetch a single agent profile from its metadata URI.
+ */
+export function useAgentProfile(agentId: bigint, uri?: string) {
+  return useQuery({
+    queryKey: ["agentProfile", agentId.toString(), uri],
+    queryFn: async (): Promise<AgentProfile | null> => {
+      if (!uri) return null;
+      const meta = await fetchMetadata(uri);
+      if (!meta?.name) return null;
+
+      return {
+        tokenId: agentId,
+        name: meta.name,
+        image: meta.image ? resolveUri(meta.image) : null,
+        description: meta.description ?? null,
+        scanUrl: `${ERC8004_SCAN_BASE}/${agentId}`,
+      };
+    },
+    enabled: !!uri && agentId > 0n,
+    staleTime: Infinity, // Profile metadata rarely changes
   });
 }
